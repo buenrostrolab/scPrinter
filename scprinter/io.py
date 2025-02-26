@@ -442,10 +442,14 @@ def load_printer(path: str | Path, genome: Genome, attach: bool = True):
         whether to attach the footprintsadata / bindingscoreadata to the printer object
     """
     data = snap.read(path)
-    assert data.uns["genome"] == genome.name, "Process data with %s, but now loading with %s" % (
-        data.uns["genome"],
-        genome.name,
-    )
+    if "genome" in data.uns:
+        assert data.uns["genome"] == genome.name, "Process data with %s, but now loading with %s" % (
+            data.uns["genome"],
+            genome.name,
+        )
+    else:
+        print("No genome exists in data.uns. Adding the input genome.")
+        data.uns["genome"] = genome.name
     printer = scPrinter(
         adata=data,
         adata_path=path,
