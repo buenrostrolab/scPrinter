@@ -2178,9 +2178,6 @@ def seq_attr_seq2print(
                 save_group_names
             ), "group_names and save_group_names must have the same length"
         save_group_names = ",".join([str(x) for x in save_group_names])
-
-        print("group_names", group_names)
-        print("save_group_names", save_group_names)
         command.extend(["--models", lora_ids_str])
         command.extend(["--save_names", save_group_names])
     if preset is not None:
