@@ -626,6 +626,8 @@ def report_composite_motif(
         selected_pattern,
     ) in zip(modisco_h5pys, img_path_suffixs, delta_effect_paths, motif_prefixs, selected_patterns):
         print("Processing", modisco_h5py)
+        if delta_effect_path is None:
+            delta_effect_path = ""
         selected_pattern = set(selected_pattern) if selected_pattern is not None else None
 
         match_res = composite_motif_calling(
