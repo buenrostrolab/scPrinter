@@ -26,7 +26,7 @@ def predict(model, X, batch_size=64, verbose=False):
 
     """
     pred_footprints = []
-    pred_footprints = []
+    pred_scores = []
     model.eval()
     device = next(model.parameters()).device
     with torch.no_grad():
@@ -34,10 +34,10 @@ def predict(model, X, batch_size=64, verbose=False):
             X_batch = X[i : i + batch_size].to(device)
             X_foot, X_score = model(X_batch)
             pred_footprints.append(X_foot.detach().cpu())
-            pred_footprints.append(X_score.detach().cpu())
+            pred_scores.append(X_score.detach().cpu())
         pred_footprints = torch.cat(pred_footprints, dim=0)
-        pred_footprints = torch.cat(pred_footprints, dim=0)
-    return pred_footprints, pred_footprints
+        pred_scores = torch.cat(pred_scores, dim=0)
+    return pred_footprints, pred_scores
 
 
 @torch.no_grad()
@@ -887,6 +887,3 @@ class seq2PRINT(nn.Module):
 
     def predict(self, *args, **kwargs):
         return predict(self, *args, **kwargs)
-
-
-scFootprintBPNet = seq2PRINT

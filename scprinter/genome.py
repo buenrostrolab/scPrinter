@@ -8,7 +8,9 @@ import gffutils
 import h5py
 import numpy as np
 import pyBigWig
+import torch
 from pyfaidx import Fasta
+from tqdm.auto import tqdm, trange
 
 from .datasets import datasets, giverightstothegroup
 from .utils import DNA_one_hot, get_stats_for_genome
@@ -220,7 +222,7 @@ class Genome:
                     return str(f)
         return self.bias_file
 
-    def fetch_bias_bw(self):
+    def fetch_bias_bw(self, verify=False):
         """
         Fetch the bias bigwig file locally, if it is not present, create it
         Returns
@@ -240,7 +242,7 @@ class Genome:
                     length = sig.shape[-1]
                     header.append((chrom, length))
                 bw.addHeader(header, maxZooms=0)
-                for chrom in precomputed_bias:
+                for chrom in tqdm(precomputed_bias):
                     sig = precomputed_bias[chrom]
                     bw.addEntries(
                         str(chrom),
@@ -249,7 +251,107 @@ class Genome:
                         span=1,
                     )
                 bw.close()
+            print("bias bigwig created")
+        else:
+            if verify:
+                pass_flag = True
+                with h5py.File(bias_file, "r") as dct:
+                    try:
+                        with pyBigWig.open(bias_bw, "r") as bw:
+                            for chrom in dct.keys():
+                                bias = np.array(dct[chrom][:])
+                                length = bias.shape[0]
+                                sig = bw.values(chrom, 0, length)
+                    except Exception as e:
+                        print(f"Error: {e}")
+                        print(chrom, length)
+                        pass_flag = False
+
+                if not pass_flag:
+                    print("bias bigwig corrupted, removing it now")
+                    os.remove(bias_bw)
+                    print(
+                        "recreating bias bigwig, but if you repeatedly see this message, stop and report an issue"
+                    )
+                    self.fetch_bias_bw(verify=True)
+
         return bias_bw
+
+
+def predict_genome_tn5_bias(
+    fa_file,
+    save_name,
+    tn5_model=None,
+    context_radius=50,
+    batch_size=1000,
+    device="cpu",
+):
+    """
+
+    Parameters
+    ----------
+    fa_file: str
+        path to the fasta file for the custome genome
+    save_name: str
+        path to save the calculated Tn5 bias
+    tn5_model: str
+        path to the pre-trained Tn5 model, if not provided, the default model will be used
+    context_radius: int
+        the context radius for the Tn5 model, default is 50
+    batch_size: int
+        batch size for the prediction, default is 1000
+    device: str
+        the device to run the model, default is "cpu", but if you have a GPU, you can set it to "cuda" to make it faster
+    Returns
+    -------
+
+    """
+    batch_size = max(batch_size, 101)
+    if tn5_model is None:
+        tn5_model = datasets().fetch("Tn5_NN_model.pt", processor=giverightstothegroup)
+    tn5_model = torch.jit.load(tn5_model, map_location=torch.device("cpu")).to(device)
+    ref_seq = Fasta(fa_file)
+    chrom_size = {k: len(v[:].seq) for k, v in ref_seq.items()}
+    with h5py.File(save_name, "w") as h5f:
+        bar = trange(len(chrom_size), desc=f"Predicting Tn5 bias")
+        for chrom in chrom_size:
+            bar.set_description(f"Predicting Tn5 bias for {chrom}")
+            seq = ref_seq[chrom][:].seq.upper()
+            # padding for context radius
+            if len(seq) < 100:
+                continue
+            seq = "N" * 50 + seq + "N" * 50
+            seq_len = len(seq)
+            # Initial number of batches based on desired batch_size
+            num_batch = max(seq_len // batch_size, 1)
+            stride = 2 * context_radius
+            bs = valid_batch_size(seq_len, num_batch, stride)
+            with torch.no_grad():
+                bias_all = []
+                for start in range(0, len(seq), bs - stride):
+                    local_seq = DNA_one_hot(seq[start : start + bs], device=device).float()[None]
+                    try:
+                        bias = tn5_model(local_seq).detach().cpu().numpy().reshape((-1))
+                    except:
+                        print(local_seq.shape, bs)
+                        raise EOFError
+                    bias = np.power(10, (bias - 0.5) * 2) - 0.01
+                    bias_all.append(bias)
+                bias_all = np.concatenate(bias_all, axis=0).reshape((-1))
+                h5f.create_dataset(chrom, data=bias_all)
+            bar.update(1)
+        bar.close()
+
+
+def valid_batch_size(seq_len, num_batch, stride):
+    init_bs = (seq_len + num_batch + stride) // num_batch
+    lengths = []
+    for start in range(0, seq_len, init_bs - stride):
+        lengths.append(min(start + init_bs, seq_len) - start)
+    if np.min(lengths) < stride + 1:
+        return valid_batch_size(seq_len, num_batch - 1, stride)
+    else:
+        return init_bs
 
 
 hg38_splits = [None] * 5
@@ -455,8 +557,7 @@ mm10_splits[4] = {
         "chrX",
     ],
 }
-
-GRCh38 = Genome(
+GRCh38_v1 = Genome(
     "hg38",
     {
         "chr1": 248956422,
@@ -491,11 +592,47 @@ GRCh38 = Genome(
     (0.29518279760588795, 0.20390602956403897, 0.20478356895235347, 0.2961276038777196),
     hg38_splits,
 )
-
+GRCh38 = Genome(
+    "hg38",
+    {
+        "chr1": 248956422,
+        "chr2": 242193529,
+        "chr3": 198295559,
+        "chr4": 190214555,
+        "chr5": 181538259,
+        "chr6": 170805979,
+        "chr7": 159345973,
+        "chr8": 145138636,
+        "chr9": 138394717,
+        "chr10": 133797422,
+        "chr11": 135086622,
+        "chr12": 133275309,
+        "chr13": 114364328,
+        "chr14": 107043718,
+        "chr15": 101991189,
+        "chr16": 90338345,
+        "chr17": 83257441,
+        "chr18": 80373285,
+        "chr19": 58617616,
+        "chr20": 64444167,
+        "chr21": 46709983,
+        "chr22": 50818468,
+        "chrX": 156040895,
+        "chrY": 57227415,
+    },
+    "gencode_v41_GRCh38.gff3.gz",
+    "gencode_v41_GRCh38.fa.gz",
+    "hg38_bias_v2.h5",
+    "hg38-blacklist.v2.bed.gz",
+    (0.29518279760588795, 0.20390602956403897, 0.20478356895235347, 0.2961276038777196),
+    hg38_splits,
+)
+hg38_v1 = GRCh38_v1
+hg38_v2 = GRCh38
 hg38 = GRCh38
 
 
-GRCm38 = Genome(
+GRCm38_v1 = Genome(
     "mm10",
     {
         "chr1": 195471971,
@@ -528,7 +665,77 @@ GRCm38 = Genome(
     mm10_splits,
 )
 
+GRCm38 = Genome(
+    "mm10",
+    {
+        "chr1": 195471971,
+        "chr2": 182113224,
+        "chr3": 160039680,
+        "chr4": 156508116,
+        "chr5": 151834684,
+        "chr6": 149736546,
+        "chr7": 145441459,
+        "chr8": 129401213,
+        "chr9": 124595110,
+        "chr10": 130694993,
+        "chr11": 122082543,
+        "chr12": 120129022,
+        "chr13": 120421639,
+        "chr14": 124902244,
+        "chr15": 104043685,
+        "chr16": 98207768,
+        "chr17": 94987271,
+        "chr18": 90702639,
+        "chr19": 61431566,
+        "chrX": 171031299,
+        "chrY": 91744698,
+    },
+    "gencode_vM25_GRCm38.gff3.gz",
+    "gencode_vM25_GRCm38.fa.gz",
+    "mm10_bias_v2.h5",
+    "mm10-blacklist.v2.bed.gz",
+    (0.29149763779592625, 0.2083275235867118, 0.20834346947899296, 0.291831369138369),
+    mm10_splits,
+)
+
+
+mm10_v1 = GRCm38_v1
+
+mm10_v2 = GRCm38
 mm10 = GRCm38
+
+mm39_v1 = Genome(
+    name="mm39",
+    chrom_sizes={
+        "chr1": 195154279,
+        "chr2": 181755017,
+        "chrX": 169476592,
+        "chr3": 159745316,
+        "chr4": 156860686,
+        "chr5": 151758149,
+        "chr6": 149588044,
+        "chr7": 144995196,
+        "chr10": 130530862,
+        "chr8": 130127694,
+        "chr14": 125139656,
+        "chr9": 124359700,
+        "chr11": 121973369,
+        "chr13": 120883175,
+        "chr12": 120092757,
+        "chr15": 104073951,
+        "chr16": 98008968,
+        "chr17": 95294699,
+        "chrY": 91455967,
+        "chr18": 90720763,
+        "chr19": 61420004,
+    },
+    gff_file="gencode_vM30_GRCm39.gff3.gz",
+    fa_file="gencode_vM30_GRCm39.fa.gz",
+    bias_file="mm39Tn5Bias.h5",
+    blacklist_file="mm39.excluderanges.bed",
+    bg=(0.29149562991965305, 0.20831919210041502, 0.20833700706759098, 0.29184817091234094),
+    splits=mm10_splits,
+)
 
 
 mm39 = Genome(
@@ -558,7 +765,7 @@ mm39 = Genome(
     },
     gff_file="gencode_vM30_GRCm39.gff3.gz",
     fa_file="gencode_vM30_GRCm39.fa.gz",
-    bias_file="mm39Tn5Bias.h5",
+    bias_file="mm39_bias_v2.h5",
     blacklist_file="mm39.excluderanges.bed",
     bg=(0.29149562991965305, 0.20831919210041502, 0.20833700706759098, 0.29184817091234094),
     splits=mm10_splits,

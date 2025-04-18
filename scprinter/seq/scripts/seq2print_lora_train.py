@@ -91,14 +91,19 @@ def construct_model_from_config(config):
     return acc_model, dna_len, output_len
 
 
-def entry(config=None, wandb_run_name="", enable_wandb=True):
+def entry(config=None, wandb_run_name="", enable_wandb=True, resume=False):
     # Initialize a new wandb run
     print("start a new run!!!")
     # If called by wandb.agent, as below,
     # this config will be set by Sweep Controller
     torch.set_num_threads(4)
     torch.backends.cudnn.benchmark = True
-    disp_path = scp.datasets.pretrained_dispersion_model
+    disp_path = (
+        scp.datasets.pretrained_dispersion_model
+        if "dispersion_model" not in config
+        else config["dispersion_model"]
+    )
+    print("using dispersion model", disp_path)
     dispmodel = loadDispModel(disp_path)
     dispmodel = dispModel(deepcopy(dispmodel)).cuda()
 
@@ -160,7 +165,12 @@ def entry(config=None, wandb_run_name="", enable_wandb=True):
     elif genome == "mm10":
         genome = scp.genome.mm10
     else:
-        raise ValueError("genome not supported")
+        print("genome not in ['hg38', mm10'], reading as custom genome")
+        try:
+            genome = pickle.load(open(genome, "rb"))
+        except:
+            print("error loading custom genome")
+            raise ValueError("genome not supported")
 
     lr = config["lr"]
     if lora_mode:
@@ -190,7 +200,7 @@ def entry(config=None, wandb_run_name="", enable_wandb=True):
     cov = {k: None for k in split}
     if not lora_mode:
         signals = os.path.join(data_dir, config["signals"])
-        bias = str(genome.fetch_bias_bw())
+        bias = str(genome.fetch_bias_bw(verify=True))
         signals = [signals, bias]
         datasets = {
             k: seq2PRINTDataset(
@@ -233,7 +243,7 @@ def entry(config=None, wandb_run_name="", enable_wandb=True):
         datasets = {
             k: scseq2PRINTDataset(
                 insertion_dict=insertion,
-                bias=str(genome.fetch_bias_bw()),
+                bias=str(genome.fetch_bias_bw(verify=True)),
                 group2idx=grp2barcodes,
                 ref_seq=genome.fetch_fa(),
                 summits=summits[summits[0].isin(split[k])],
@@ -697,6 +707,9 @@ def main():
     )
     parser.add_argument("--enable_wandb", action="store_true", help="enable wandb")
     parser.add_argument("--project", type=str, default="scPrinterSeq_v3_lora", help="project name")
+    parser.add_argument("--run_id", type=str, default=None, help="run id")
+    parser.add_argument("--resume", action="store_true", help="resume training from checkpoint")
+
     torch.set_num_threads(4)
     args = parser.parse_args()
     config = json.load(open(args.config))
@@ -722,22 +735,24 @@ def main():
             config=config,
             job_type="training",
             reinit=True,
+            id=args.run_id,
+            resume="must" if args.resume else None,
         )
 
     # Initialize a new wandb run
     if args.enable_wandb:
         with wandb.init(config=config):
             config = wandb.config
-            print("run id", wandb.run.name)
+            print("run id", wandb.run.id)
             print("run name", wandb.run.name)
             wandb_run_name = wandb.run.name
-            entry(config, wandb_run_name, args.enable_wandb)
+            entry(config, wandb_run_name, args.enable_wandb, args.resume)
     else:
         config = config
-        random_name = generate_id()
+        random_name = generate_id() if args.run_id is None else args.run_id
         print(random_name)  # Example: "bold-otter-17"
         wandb_run_name = random_name
-        entry(config, wandb_run_name, args.enable_wandb)
+        entry(config, wandb_run_name, args.enable_wandb, args.resume)
 
 
 if __name__ == "__main__":

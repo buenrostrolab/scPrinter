@@ -194,6 +194,7 @@ def get_binding_score(
     downsample=1,
     strand="*",
     cache_factor=2,
+    verbose=True,
 ):
     """
     Calculate the binding score for a given region and cell group, stores the result in the anndata object.
@@ -254,6 +255,8 @@ def get_binding_score(
         matched on +/- strand. For tiled window calculation, "+" | "*" means only on + strand and "-" means only on - strand.
     cache_factor: int
         After how many cache_factor x n_jobs chunks calculated, we fetch the results and save them to disk is backed. Default 2.
+    verbose: bool
+        Whether to print the progress bar. Default True.
 
     Returns
     -------
@@ -375,8 +378,12 @@ def get_binding_score(
         chunk_ct = 0
         index_df = []
 
-        bar1 = trange(0, len(regions), small_chunk_size, desc="submitting jobs")
-        bar = trange(len(region_identifiers), desc="collecting Binding prediction")
+        bar1 = trange(
+            0, len(regions), small_chunk_size, desc="submitting jobs", disable=not verbose
+        )
+        bar = trange(
+            len(region_identifiers), desc="collecting Binding prediction", disable=not verbose
+        )
         time = 0
         if backed:
             adata.close()
@@ -1973,7 +1980,7 @@ def ohe_from_region(
             acc_model = model
         acc_model.eval()
         dna_len = acc_model.dna_len
-        signal_len = acc_model.signal_len + 200
+        signal_len = acc_model.output_len + 200
     signal_window = signal_len
     print("signal_window", signal_window, "dna_len", dna_len)
     bias = str(genome.fetch_bias())[:-3] + ".bw"
@@ -2399,6 +2406,7 @@ def seq_tfbs_seq2print(
                         f"model_{id_str}." + template if id[0] is not None else template,
                     )
                     seq_attr_path_npz = seq_attr_path.replace(".bigwig", ".npz")
+                    # print (seq_attr_path, seq_attr_path_npz, "exists?")
                     if os.path.exists(seq_attr_path_npz):
                         read_numpy = True
                     if return_adata and (not os.path.exists(seq_attr_path)):

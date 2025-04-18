@@ -397,6 +397,61 @@ def make_gene_matrix(
 
         adata.var.index = list(regions["gene_id"])
         return adata
+    elif strategy == "tss":
+        tss_list = []
+        db = printer.gff_db
+        for transcript in db.features_of_type("transcript"):
+            # Get gene name or fallback to gene_id
+            gene_name = transcript.attributes.get(
+                "gene_name", transcript.attributes.get("gene_id", ["unknown"])
+            )[0]
+            if transcript.chrom not in printer.genome.chrom_sizes:
+                continue
+            # Infer TSS position based on strand
+            if transcript.strand == "+":
+                tss = transcript.start
+            else:
+                tss = transcript.end
+            tss_list.append(
+                (
+                    transcript.chrom,
+                    max(tss - 10000, 0),
+                    min(tss + 10000, printer.genome.chrom_sizes[transcript.chrom] - 1),
+                    gene_name,
+                )
+            )
+        regions = pd.DataFrame(tss_list, columns=["chrom", "start", "end", "gene_id"])
+        adata = make_peak_matrix(
+            printer, regions, cell_grouping=cell_grouping, group_names=group_names, sparse=sparse
+        )
+        adata.var["gene_id"] = list(regions["gene_id"])
+        gene_groups = adata.var.groupby("gene_id").indices
+        X = adata.X
+        merged_X = []
+
+        new_gene_ids = []
+
+        for gene_id, idx_list in tqdm(
+            gene_groups.items(), desc="Merging transcripts with the same gene name"
+        ):
+            cols = X[:, idx_list]
+            if issparse(cols):
+                mean_col = cols.sum(axis=1)
+            else:
+                mean_col = np.sum(cols, axis=1)
+            merged_X.append(csc_matrix(mean_col))
+            new_gene_ids.append(gene_id)
+
+        # Stack and create new AnnData
+        if issparse(X):
+            merged_matrix = hstack(merged_X).tocsr()
+        else:
+            merged_matrix = np.column_stack(merged_X)
+        adata_merged = anndata.AnnData(X=merged_matrix, obs=adata.obs.copy())
+        adata_merged.var["gene_id"] = new_gene_ids
+        adata_merged.var_names = new_gene_ids
+
+        return adata_merged
     else:
         print("Sorry, the current implementation only supports 'gene' strategy.")
 
@@ -471,6 +526,7 @@ def make_peak_matrix(
     if cell_grouping is not None:
         a = [wrapper1(np.array(res[barcodes].sum(axis=0))) for barcodes in cell_grouping_idx]
         res = wrapper2(vstack(a))
+        res = res.tocsr() if sparse else res
 
     adata = AnnData(X=res)
     adata.obs.index = printer.insertion_file.obs_names[:] if cell_grouping is None else group_names
@@ -724,6 +780,7 @@ def call_peaks(
         group_names = [group_names]
         cell_grouping = [cell_grouping]
         sample_names = [sample_names]
+    n_jobs = min(n_jobs, len(group_names))
     if n_jobs > 1:
         pool = ProcessPoolExecutor(max_workers=n_jobs)
 

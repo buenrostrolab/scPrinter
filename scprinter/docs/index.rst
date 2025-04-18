@@ -3,24 +3,6 @@ scprinter: A Python package for single-cell multi-scale footprinting
 
 scPrinter is the python implementation of PRINT.
 
-Main advantages:
- - Much faster (40-60x faster)
- - More flexible (generate footprints for any region / cell groupings)
- - More portable (No need to share fragments, share the printer object (10x smaller))
- - Real time synced visualization of footprinting results.
- - Generalizable to low-cov bulk ATAC & scATAC-seq
-
-Coming functions:
- - Differential testing
-
-
-
-.. video:: _static/beta.mp4
-    :autoplay:
-    :loop:
-    :width: 960
-
-
 How to cite
 -----------
 The original multi-scale footprinting algorithm is described in the following paper:

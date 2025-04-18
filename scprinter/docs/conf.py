@@ -137,6 +137,87 @@ commit = "main"
 code_url = f"https://github.com/buenrostrolab/scPrinter/blob/{commit}"
 
 
+# wrapping out really long outputs in notebooks
+nbsphinx_prolog = r"""
+.. raw:: html
+
+    <style>
+    .output-area-wrapper {
+        border: 1px solid #ccc;
+        padding: 8px;
+        margin-bottom: 1em;
+        background-color: #f9f9f9;
+        position: relative;
+    }
+    .toggle-button-wrapper {
+        text-align: center;
+        margin-bottom: 10px;
+    }
+    </style>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const all = Array.from(document.querySelectorAll('.nboutput'));
+        let group = [];
+
+        const flushGroup = () => {
+            if (group.length === 0) return;
+
+            // Combine all outputs inside group
+            let totalText = '';
+            group.forEach(nb => {
+                const outs = nb.querySelectorAll('.output_area');
+                outs.forEach(out => totalText += out.innerText);
+            });
+
+            if (totalText.length > 300) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'output-area-wrapper';
+
+                // Create and insert toggle button inside wrapper
+                const buttonDiv = document.createElement('div');
+                buttonDiv.className = 'toggle-button-wrapper';
+                const button = document.createElement('button');
+                button.innerText = 'Show/Hide Output';
+                button.onclick = () => {
+                    outputsDiv.style.display = (outputsDiv.style.display === 'none') ? 'block' : 'none';
+                };
+                buttonDiv.appendChild(button);
+                wrapper.appendChild(buttonDiv);
+
+                // Create div for actual outputs
+                const outputsDiv = document.createElement('div');
+                group.forEach(nb => {
+                    const outs = Array.from(nb.querySelectorAll('.output_area'));
+                    outs.forEach(out => outputsDiv.appendChild(out));
+                });
+                outputsDiv.style.display = 'none';
+                wrapper.appendChild(outputsDiv);
+
+                // Insert wrapper before first .nboutput
+                const first = group[0];
+                first.parentNode.insertBefore(wrapper, first);
+                group.forEach(nb => nb.remove());
+            }
+
+            group = [];
+        };
+
+        for (let i = 0; i < all.length; i++) {
+            const el = all[i];
+            if (i === 0 || el.previousElementSibling?.classList.contains('nboutput')) {
+                group.push(el);
+            } else {
+                flushGroup();
+                group.push(el);
+            }
+        }
+        flushGroup();
+    });
+    </script>
+"""
+
+
 # based on numpy doc/source/conf.py
 def linkcode_resolve(domain, info):
     """

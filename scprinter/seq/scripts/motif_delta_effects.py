@@ -157,7 +157,12 @@ def main():
     elif genome == "mm10":
         genome = scp.genome.mm10
     else:
-        raise ValueError("genome not supported")
+        print("genome not in ['hg38', mm10'], reading as custom genome")
+        try:
+            genome = pickle.load(open(genome, "rb"))
+        except:
+            print("error loading custom genome")
+            raise ValueError("genome not supported")
 
     parallel_lora = len(ids) > len(models)
     gpus = gpus[: max(len(models), len(ids))]
@@ -261,12 +266,12 @@ def main():
                 model.coverages.weight.data = (
                     torch.ones_like(model.coverages.weight.data) * mm[None]
                 )
-
+            dna_len = model.dna_len
             results_fp = []
             results_count = []
 
-            seq_motif = torch.zeros((len(motifs), len(CREs), 4, 1840), dtype=torch.int8)
-            seq_bg = torch.zeros((len(CREs), 4, 1840), dtype=torch.int8)
+            seq_motif = torch.zeros((len(motifs), len(CREs), 4, dna_len), dtype=torch.int8)
+            seq_bg = torch.zeros((len(CREs), 4, dna_len), dtype=torch.int8)
             # bar = trange(args.sample_num, desc="sampling")
             ct = 0
             bar = trange(len(CREs), desc="sampling")
@@ -275,8 +280,11 @@ def main():
                 chr, start, end = region.iloc[0], region.iloc[1], region.iloc[2]
 
                 center = int((start + end) // 2)
-                pad = 1840 // 2
+                pad = dna_len // 2
                 seq = genome.fetch_seq(chr, center - pad, center + pad)
+                if len(seq) != dna_len:
+                    print("seq length not dna_len", len(seq))
+                    continue
                 # random shuffle seq
                 if args.random_seq:
                     seq = list(seq)

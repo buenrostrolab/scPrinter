@@ -1,5 +1,6 @@
 import argparse
 import gc
+import pickle
 import subprocess
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
@@ -204,7 +205,13 @@ def main(
     elif genome == "mm10":
         genome = scp.genome.mm10
     else:
-        raise ValueError("genome not supported")
+        print("genome not in ['hg38', mm10'], reading as custom genome")
+        try:
+            genome = pickle.load(open(genome, "rb"))
+        except:
+            print("error loading custom genome")
+            raise ValueError("genome not supported")
+
     bias = str(genome.fetch_bias_bw())
     signals = [bias, bias]
 

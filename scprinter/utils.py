@@ -701,6 +701,11 @@ def loadDispModel(h5Path):
     with h5py.File(h5Path, "r") as a:
         dispmodels = load_entire_hdf5(a)
         for model in dispmodels:
+            if model in ["version"]:
+                # Skip the version key
+                # This is just a version string
+                continue
+
             dispmodels[model]["modelWeights"] = [
                 torch.from_numpy(dispmodels[model]["modelWeights"][key]).float()
                 for key in ["ELT1", "ELT2", "ELT3", "ELT4"]

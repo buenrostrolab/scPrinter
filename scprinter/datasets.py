@@ -56,6 +56,8 @@ def datasets():
                 "TFBS_1_conv_v2.pt": "md5:c7ab928fb61641a5b6b61087db9b055f",
                 "TFBS_model_py.pt": "md5:5bd79a9c4f3374241a6f4341eb39fe2c",
                 "TFBS_model_model1_py.pt": "md5:7893684aa234df3b58995b212d9a8363",
+                "Tn5_NN_model_py_v2.pt": "md5:5ea6c26fcd54ad2aff3d9705ed54dd3c",
+                "dispersion_model_py_v2.h5": "md5:341a011610c7db9a1418917e359d3169",
                 # motif database
                 "JASPAR2022_core_nonredundant.jaspar": "md5:af268b3e9589f52440007b43cba358f8",
                 "CisBP_Human.jaspar": "md5:23b85a4cd8299416dd5d85516c0cdcbf",
@@ -80,6 +82,15 @@ def datasets():
                 "panTro6Tn5Bias.tar.gz": "md5:ba208a4cdc2e1fc09d66cac44e85e001",
                 "sacCer3Tn5Bias.tar.gz": "md5:ed811aabe1ffa4bdb1520d4b25ee9289",
                 "mm39Tn5Bias.h5": "md5:1782f01f170982ea595228f7820f1d17",
+                "ce11_bias_v2.h5": "md5:95a545d9acfc6121bf40f6330e74fd03",
+                "danRer11_bias_v2.h5": "md5:4da32a3f73dbca46bf4528138e3b5ad0",
+                "dm6_bias_v2.h5": "md5:c69a893ad99157223e880714af46c6fb",
+                "hg19_bias_v2.h5": "md5:013ca480e6a7d3f541ef2404ee56a3c7",
+                "hg38_bias_v2.h5": "md5:c56f03c32bc793bf2a5cf23d4f66f20e",
+                "mm10_bias_v2.h5": "md5:29473ec7d3108683d90b92a783704cf0",
+                "mm39_bias_v2.h5": "md5:36520483892ea158c0c4a1d672a4827c",
+                "panTro6_bias_v2.h5": "md5:146d1d8213cb3b42159e6bdad2959945",
+                "sacCer3_bias_v2.h5": "md5:a5e8c0162be0152c75e0af20125b9e42",
                 # Genome files
                 "gencode_v41_GRCh37.gff3.gz": "sha256:df96d3f0845127127cc87c729747ae39bc1f4c98de6180b112e71dda13592673",
                 "gencode_v41_GRCh37.fa.gz": "sha256:94330d402e53cf39a1fef6c132e2500121909c2dfdce95cc31d541404c0ed39e",
@@ -98,12 +109,14 @@ def datasets():
             },
             urls={
                 "dispersion_model_py.h5": "https://zenodo.org/records/14194242/files/dispersion_model_py.h5",
+                "dispersion_model_py_v2.h5": "https://zenodo.org/records/15170402/files/dispersion_model_py_v2.h5",
                 "nucleosome_model_py.pt": "https://zenodo.org/records/14194242/files/nucleosome_model_py.pt",
                 "TFBS_model_py.pt": "https://zenodo.org/records/14194242/files/TFBS_model_py.pt",
                 "TFBS_model_model1_py.pt": "https://zenodo.org/records/14194242/files/TFBS_model_cluster_I_py.pt",
                 # Sequence TFBS models:
-                "TFBS_0_conv_v2.pt": "https://drive.google.com/uc?export=download&id=1GtiKuIQ03TWppeDoGzE3rgnZ7MCS61lq",
-                "TFBS_1_conv_v2.pt": "https://drive.google.com/uc?export=download&id=1PGWdU9E41zfyIK53BFoJ89yFJPSoNkPA",
+                "TFBS_0_conv_v2.pt": "https://zenodo.org/records/15085406/files/TFBS_0_conv_v2.pt",
+                "TFBS_1_conv_v2.pt": "https://zenodo.org/records/15085406/files/TFBS_0_conv_v2.pt",
+                "Tn5_NN_model_py_v2.pt": "https://zenodo.org/records/15103252/files/Tn5_NN_model_py_v2.pt",
                 # motif database
                 "JASPAR2022_core_nonredundant.jaspar": "https://drive.google.com/uc?export=download&id=1YmRZ3sABLJvv9uj40BY97Rdqyodd852P",
                 "CisBP_Human.jaspar": "https://drive.google.com/uc?export=download&id=1IVcg27kxzG5TtnjqFrheGxXa-0kfAOW7",
@@ -126,6 +139,15 @@ def datasets():
                 "mm39Tn5Bias.h5": "https://zenodo.org/records/14164466/files/mm39Tn5Bias.h5",
                 "panTro6Tn5Bias.tar.gz": "https://zenodo.org/record/7121027/files/panTro6Tn5Bias.tar.gz",
                 "sacCer3Tn5Bias.tar.gz": "https://zenodo.org/record/7121027/files/sacCer3Tn5Bias.tar.gz",
+                "ce11_bias_v2.h5": "https://zenodo.org/record/15224770/files/ce11_bias_v2.h5",
+                "danRer11_bias_v2.h5": "https://zenodo.org/record/15224770/files/danRer11_bias_v2.h5",
+                "dm6_bias_v2.h5": "https://zenodo.org/record/15224770/files/dm6_bias_v2.h5",
+                "hg19_bias_v2.h5": "https://zenodo.org/record/15224770/files/hg19_bias_v2.h5",
+                "hg38_bias_v2.h5": "https://zenodo.org/record/15224770/files/hg38_bias_v2.h5",
+                "mm10_bias_v2.h5": "https://zenodo.org/record/15224770/files/mm10_bias_v2.h5",
+                "mm39_bias_v2.h5": "https://zenodo.org/record/15224770/files/mm39_bias_v2.h5",
+                "panTro6_bias_v2.h5": "https://zenodo.org/record/15224770/files/panTro6_bias_v2.h5",
+                "sacCer3_bias_v2.h5": "https://zenodo.org/record/15224770/files/sacCer3_bias_v2.h5",
                 "gencode_v41_GRCh37.gff3.gz": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_41/GRCh37_mapping/gencode.v41lift37.basic.annotation.gff3.gz",
                 "gencode_v41_GRCh37.fa.gz": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_41/GRCh37_mapping/GRCh37.primary_assembly.genome.fa.gz",
                 "gencode_v41_GRCh38.gff3.gz": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_41/gencode.v41.basic.annotation.gff3.gz",
@@ -194,7 +216,19 @@ def NucBS_model():
     return str(datasets().fetch("nucleosome_model_py.pt", processor=giverightstothegroup))
 
 
-def dispersion_model():
+def dispersion_model_v2():
+    """
+    A wrapper function to get Pretrained dispersion model
+    You can also get it by `scprinter.datasets.pretrained_dispersion_model`
+
+    Returns
+    -------
+    str: path to the dispersion model
+    """
+    return str(datasets().fetch("dispersion_model_py_v2.h5", processor=giverightstothegroup))
+
+
+def dispersion_model_v1():
     """
     A wrapper function to get Pretrained dispersion model
     You can also get it by `scprinter.datasets.pretrained_dispersion_model`
@@ -204,6 +238,9 @@ def dispersion_model():
     str: path to the dispersion model
     """
     return str(datasets().fetch("dispersion_model_py.h5", processor=giverightstothegroup))
+
+
+dispersion_model = dispersion_model_v2
 
 
 def FigR_motifs(species="mouse"):
@@ -267,12 +304,21 @@ pretrained_TFBS_model_classI = datasets().fetch(
     "TFBS_model_model1_py.pt", processor=giverightstothegroup
 )
 pretrained_NucBS_model = datasets().fetch("nucleosome_model_py.pt", processor=giverightstothegroup)
-pretrained_dispersion_model = datasets().fetch(
+pretrained_dispersion_model_v1 = datasets().fetch(
     "dispersion_model_py.h5", processor=giverightstothegroup
 )
+pretrained_dispersion_model_v2 = datasets().fetch(
+    "dispersion_model_py_v2.h5", processor=giverightstothegroup
+)
+pretrained_dispersion_model = pretrained_dispersion_model_v2
+
 
 pretrained_seq_TFBS_model0 = datasets().fetch("TFBS_0_conv_v2.pt", processor=giverightstothegroup)
 pretrained_seq_TFBS_model1 = datasets().fetch("TFBS_1_conv_v2.pt", processor=giverightstothegroup)
+
+pretrained_Tn5_bias_model = datasets().fetch(
+    "Tn5_NN_model_py_v2.pt", processor=giverightstothegroup
+)
 
 FigR_motifs_mouse = datasets().fetch("CisBP_Mouse_FigR", processor=giverightstothegroup)
 FigR_motifs_human = datasets().fetch("CisBP_Human_FigR", processor=giverightstothegroup)
