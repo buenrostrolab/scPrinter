@@ -216,7 +216,8 @@ class Genome:
                 processor=giverightstothegroup,
                 progressbar=True,
             )
-
+            if not isinstance(file, list):
+                file = [file]
             for f in file:
                 if ".h5" in f:
                     return str(f)
