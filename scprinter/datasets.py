@@ -115,7 +115,7 @@ def datasets():
                 "TFBS_model_model1_py.pt": "https://zenodo.org/records/14194242/files/TFBS_model_cluster_I_py.pt",
                 # Sequence TFBS models:
                 "TFBS_0_conv_v2.pt": "https://zenodo.org/records/15085406/files/TFBS_0_conv_v2.pt",
-                "TFBS_1_conv_v2.pt": "https://zenodo.org/records/15085406/files/TFBS_0_conv_v2.pt",
+                "TFBS_1_conv_v2.pt": "https://zenodo.org/records/15085406/files/TFBS_1_conv_v2.pt",
                 "Tn5_NN_model_py_v2.pt": "https://zenodo.org/records/15103252/files/Tn5_NN_model_py_v2.pt",
                 # motif database
                 "JASPAR2022_core_nonredundant.jaspar": "https://drive.google.com/uc?export=download&id=1YmRZ3sABLJvv9uj40BY97Rdqyodd852P",

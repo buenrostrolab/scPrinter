@@ -2441,12 +2441,12 @@ def seq_tfbs_seq2print(
                         numpy_mode=return_adata,
                         save_key=save_key,
                     )
-            seq_attr.append(
-                os.path.join(
-                    f"{model}_{save_key}",
-                    "model_{lora_id}." + template if id[0] is not None else template,
+                seq_attr.append(
+                    os.path.join(
+                        f"{model}_{save_key}",
+                        "model_{lora_id}." + template if id[0] is not None else template,
+                    )
                 )
-            )
         else:
             if ".npz" in seq_attr[0]:
                 read_numpy = True
