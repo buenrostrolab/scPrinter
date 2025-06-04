@@ -1,5 +1,7 @@
 import sys
+import warnings
 
+warnings.simplefilter(action="ignore", category=FutureWarning)
 try:
     from importlib.metadata import PackageNotFoundError, version
 except ImportError:  # For Python <3.8 compatibility

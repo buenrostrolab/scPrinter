@@ -94,7 +94,8 @@ class seq2PRINTDataset(torch.utils.data.Dataset):
             self.max_counts = 1e16
         self.verbose = verbose
         if initialize:
-            print("input summits", len(summits))
+            if verbose:
+                print("input summits", len(summits))
             summits_valid = np.array(
                 [
                     self.validate_loci(chrom, summit)
@@ -104,8 +105,9 @@ class seq2PRINTDataset(torch.utils.data.Dataset):
                     )
                 ]
             )
-            print("valid summits after trimming edges", np.sum(summits_valid))
-            self.summits = summits.loc[summits_valid]
+            if verbose:
+                print("valid summits after trimming edges", np.sum(summits_valid))
+            self.summits = summits.loc[summits_valid].copy().reset_index(drop=True)
 
             coverage = np.array(
                 [
@@ -118,16 +120,18 @@ class seq2PRINTDataset(torch.utils.data.Dataset):
                     )
                 ]
             )
-            print(coverage.shape)
-            print(
-                "coverage min max",
-                coverage.min(axis=-1).min(),
-                coverage.max(axis=-1).max(),
-            )
+            if verbose:
+                print(coverage.shape)
+                print(
+                    "coverage min max",
+                    coverage.min(axis=-1).min(),
+                    coverage.max(axis=-1).max(),
+                )
             summits_valid = (coverage.min(axis=-1) > self.min_counts) & (
                 coverage.max(axis=-1) < self.max_counts
             )
-            print("valid summits after min/max count filter", np.sum(summits_valid))
+            if verbose:
+                print("valid summits after min/max count filter", np.sum(summits_valid))
             self.summits = self.summits.loc[summits_valid]
             self.coverage = coverage[summits_valid]
             self.summits = np.array(self.summits)
@@ -569,7 +573,6 @@ class scseq2PRINTDataset(torch.utils.data.Dataset):
             )
             print("valid summits after trimming edges", np.sum(summits_valid))
             self.summits = summits.loc[summits_valid]
-            self.summits = self.summits.loc[summits_valid]
             self.summits = np.array(self.summits)
 
             self.idx = np.arange(len(self.summits) * len(self.group2idx))

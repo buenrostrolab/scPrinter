@@ -7,12 +7,11 @@ import pandas as pd
 import scipy
 import scipy.sparse as sparse
 from anndata import AnnData
-from cupyx.scipy.sparse import issparse as cupyx_issparse
 from pynndescent import NNDescent
 from scipy.sparse import csr_matrix as scipy_csr_matrix
 from tqdm.auto import tqdm, trange
 
-from scprinter.utils import get_peak_bias
+from .utils import get_peak_bias, get_peak_CpG_density
 
 
 def sample_bg_peaks(
@@ -24,7 +23,7 @@ def sample_bg_peaks(
     w=0.1,
     bs=50,
     n_jobs=1,
-    bg_columns=["gc_content"],
+    bg_columns=["gc_content", "reads_per_peak"],
 ):
     """
     This function samples background peaks for chromVAR analysis in single-cell ATAC-seq data.
@@ -64,6 +63,10 @@ def sample_bg_peaks(
     if "gc_content" in bg_columns:
         if "gc_bias" not in adata.var.columns:
             get_peak_bias(adata, genome)
+    if "cpg_density" in bg_columns:
+        if "cpg_density" not in adata.var.columns:
+            get_peak_CpG_density(adata, genome)
+
     assert method in ["nndescent", "chromvar"], "Method not supported"
     reads_per_peak = adata.X.sum(axis=0)
     assert np.min(reads_per_peak) > 0, "Some peaks have no reads"
@@ -71,7 +74,7 @@ def sample_bg_peaks(
     reads_per_peak = np.array(reads_per_peak).reshape((-1))
     adata.var["reads_per_peak"] = reads_per_peak
     if len(bg_columns) > 0:
-        mat = np.array(adata.var[list(bg_columns) + ["reads_per_peak"]].values).T
+        mat = np.array(adata.var[list(bg_columns)].values).T
         chol_cov_mat = np.linalg.cholesky(np.cov(mat))
         trans_norm_mat = scipy.linalg.solve_triangular(
             a=chol_cov_mat, b=mat, lower=True
@@ -234,11 +237,25 @@ def compute_deviations(adata, chunk_size: int = 10000, device="cuda", tf_chunk_s
         import numpy as backend
 
     print("Computing expectation reads per cell and peak...")
-    expectation_var = backend.asarray(adata.X.sum(0), dtype=backend.float32).reshape(
-        (1, adata.X.shape[1])
-    )
+    if "expectation_var" not in adata.var:
+        expectation_var = backend.asarray(adata.X.sum(0), dtype=backend.float32).reshape(
+            (1, adata.X.shape[1])
+        )
+    else:
+        print("precomputed expectation_var")
+        expectation_var = backend.asarray(
+            adata.var["expectation_var"], dtype=backend.float32
+        ).reshape((1, adata.X.shape[1]))
     expectation_var /= expectation_var.sum()
-    expectation_obs = np.asarray(adata.X.sum(1), dtype=np.float32).reshape((adata.X.shape[0], 1))
+    if "expectation_obs" not in adata.obs:
+        expectation_obs = np.asarray(adata.X.sum(1), dtype=np.float32).reshape(
+            (adata.X.shape[0], 1)
+        )
+    else:
+        print("precomputed expectation_obs")
+        expectation_obs = np.asarray(adata.obs["expectation_obs"], dtype=np.float32).reshape(
+            (adata.X.shape[0], 1)
+        )
 
     motif_match = adata.varm["motif_match"]
     if tf_chunk_size < 0:
@@ -318,12 +335,17 @@ def compute_deviations(adata, chunk_size: int = 10000, device="cuda", tf_chunk_s
 def _compute_deviations(motif_match, count, expectation_obs, expectation_var, device):
     if device == "cuda":
         import cupy as backend
+        from cupyx.scipy.sparse import issparse as cupyx_issparse
     else:
         import numpy as backend
 
     observed = count @ motif_match
-    if cupyx_issparse(observed):
-        observed = observed.toarray()
+    if device == "cuda":
+        if cupyx_issparse(observed):
+            observed = observed.toarray()
+    else:
+        if sparse.issparse(observed):
+            observed = observed.toarray()
     expected = expectation_obs @ (expectation_var @ motif_match)
     out = backend.zeros_like(expected)
     backend.divide(observed - expected, expected, out=out)

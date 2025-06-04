@@ -277,7 +277,10 @@ def get_binding_score(
             cell_grouping = [cell_grouping]
 
         regions = regionparser(regions, printer, region_width)
-        region_identifiers = df2regionidentifier(regions)
+        if "region_name" in regions:
+            region_identifiers = list(regions["region_name"])
+        else:
+            region_identifiers = df2regionidentifier(regions)
 
         if "binding score" not in printer.uns:
             printer.uns["binding score"] = {}
@@ -772,7 +775,10 @@ def get_footprint_score(
             cell_grouping = group_names
 
         regions = regionparser(regions, printer, region_width)
-        region_identifiers = df2regionidentifier(regions)
+        if "region_name" in regions:
+            region_identifiers = list(regions["region_name"])
+        else:
+            region_identifiers = df2regionidentifier(regions)
         if save_key is None:
             save_key = "FootPrints"
         save_path = os.path.join(printer.file_path, "%s.h5ad" % save_key) if backed else "None"
@@ -1239,7 +1245,10 @@ def footprint_generator(
             cell_grouping = [cell_grouping]
 
         regions = regionparser(regions, printer, region_width)
-        region_identifiers = df2regionidentifier(regions)
+        if "region_name" in regions:
+            region_identifiers = list(regions["region_name"])
+        else:
+            region_identifiers = df2regionidentifier(regions)
 
         assert (
             printer.dispersionModel is not None
@@ -1417,7 +1426,10 @@ def get_insertions(
                 raise ValueError("summarize_func must be either mean, sum, max | min")
 
         regions = regionparser(regions, printer, region_width)
-        region_identifiers = df2regionidentifier(regions)
+        if "region_name" in regions:
+            region_identifiers = list(regions["region_name"])
+        else:
+            region_identifiers = df2regionidentifier(regions)
         save_path = os.path.join(printer.file_path, "%s.h5ad" % save_key) if backed else "None"
         if "insertions" not in printer.uns:
             printer.uns["insertions"] = {}
@@ -1738,6 +1750,7 @@ def seq_lora_model_config(
         "cell_sample": 10,
         "coverage_in_lora": True,
         "lr": 3e-5,
+        "coverage_warming": 5,
     }
     # Once upon a time, I used lr=3e-4....
     for key in default_lora_json:
@@ -1850,11 +1863,13 @@ def seq_lora_slice_model_config(
     # Now query the index of finetune_cell_grouping in cell_grouping
     cells = [group_names_query[group] for group in finetune_group_names]
     lora_config["cells"] = cells
+    lora_config["coverage_warming"] = 0
     for key in additional_lora_config:
         lora_config[key] = additional_lora_config[key]
     lora_config["group_names"] = finetune_group_names
     lora_config["savename"] = f"{model_name}_fold{fold}"
     lora_config["peaks"] = region_path.replace(before, after)
+
     if config_save_path is not None:
         with open(config_save_path, "w") as f:
             json.dump(lora_config, f, indent=4, cls=NumpyEncoder)
@@ -2165,11 +2180,11 @@ def seq_attr_seq2print(
         if type(lora_config) is not dict:
             lora_config = json.load(open(lora_config, "r"))
         group_names_all = lora_config["group_names"]
-        group_names_query = {g: i for i, g in enumerate(group_names_all)}
+        group_names_query = {str(g): i for i, g in enumerate(group_names_all)}
         # Now query the index of finetune_cell_grouping in cell_grouping
-        if type(group_names) is str:
+        if type(group_names) not in [np.ndarray, list]:
             group_names = [group_names]
-        if type(group_names[0]) is str:
+        if type(group_names[0]) not in [np.ndarray, list]:
             group_names = [[x] for x in group_names]
         group_names = [[str(xx) for xx in x] for x in group_names]
         lora_ids = [[group_names_query[xx] for xx in group] for group in group_names]
@@ -2298,8 +2313,10 @@ def seq_tfbs_seq2print(
         The lora configuration dictionary or the path to the configuration dictionary, must be provided when model_type is lora
     group_names: list | str | list[list] | None
         The group names, be consistent with the ones you input when creating lora config. Note that seq2PRINT supports merging multiple groups into one model.
+        If it's not a LoRA model, this should be None or a single group name, and that single TFBS file for that bulk seq2PRINT model will be saved accordingly.
     save_group_names: list | str | None
         The final group name to save the model, it wouldn't matter if you are not merging multiple group. If you are merging, for instance group 1,2,3,4,5 into a new group, perhaps naming it as CD4 etc would be easier to interpret. When set as None, we will infer one by adding '-' in between the group names, but notice that it might trigger filename too long error.
+        If it's not a LoRA model, this should be None (inferred from the group_names) or a single group name, and that single TFBS file for that bulk seq2PRINT model will be saved accordingly.
     save_path: str | Path
         The path to save the TF binding scores
     overwrite_seqattr: bool
@@ -2331,12 +2348,14 @@ def seq_tfbs_seq2print(
     if type(save_group_names) is np.ndarray:
         save_group_names = list(save_group_names)
 
-    if type(group_names) is str:
+    if type(group_names) not in [np.ndarray, list]:
         group_names = [group_names]
-    if type(group_names[0]) is str:
-        group_names = [[x] for x in group_names]
+    if type(group_names[0]) not in [np.ndarray, list]:
+        group_names = [[str(x)] for x in group_names]
     if save_group_names is None:
         save_group_names = [None] * len(group_names)
+    if type(save_group_names) not in [np.ndarray, list]:
+        save_group_names = [save_group_names]
 
     for i in range(len(group_names)):
         if save_group_names[i] is None:
@@ -2434,7 +2453,7 @@ def seq_tfbs_seq2print(
                         preset=kind,
                         lora_config=lora_config,
                         overwrite=overwrite_seqattr,
-                        verbose=False,
+                        verbose=verbose,
                         group_names=generate_seq_attr,
                         save_group_names=generate_seq_attr_save_name,
                         launch=launch,
@@ -2461,31 +2480,29 @@ def seq_tfbs_seq2print(
         return
 
     count, foot = seq_attrs_all
-    count = " ".join(count)
-    foot = " ".join(foot)
+    # count = " ".join(count)
+    # foot = " ".join(foot)
     count_pt = pretrained_seq_TFBS_model0
     foot_pt = pretrained_seq_TFBS_model1
     save_name = ",".join([os.path.join(save_path, str(x)) for x in save_group_names])
     gpus = [str(x) for x in gpus]
 
-    command = [
-        "seq2print_tfbs",
-        "--count_pt",
-        count_pt,
-        "--foot_pt",
-        foot_pt,
-        "--seq_count",
-        count,
-        "--seq_foot",
-        foot,
-        "--genome",
-        genome.name,
-        "--peaks",
-        region_path,
-        "--save_name",
-        save_name,
-        "--gpus",
-    ] + gpus
+    command = (
+        ["seq2print_tfbs", "--count_pt", count_pt, "--foot_pt", foot_pt, "--seq_count"]
+        + count
+        + ["--seq_foot"]
+        + foot
+        + [
+            "--genome",
+            genome.name,
+            "--peaks",
+            region_path,
+            "--save_name",
+            save_name,
+            "--gpus",
+        ]
+        + gpus
+    )
     if group_names[0][0] is not None:
         lora_ids_str = ",".join(save_group_names)
         command.extend(["--lora_ids", lora_ids_str])
@@ -2501,6 +2518,8 @@ def seq_tfbs_seq2print(
         command.append("--read_numpy")
     if post_normalize:
         command.append("--post_normalize")
+    if not verbose:
+        command.append("--silent")
     if verbose:
         if launch:
             print(launch_template)
@@ -2515,7 +2534,11 @@ def seq_tfbs_seq2print(
 
     if return_adata:
         regions = regionparser(region_path, printer=None, width=800)
-        region_identifiers = df2regionidentifier(regions)
+
+        if "region_name" in regions:
+            region_identifiers = list(regions["region_name"])
+        else:
+            region_identifiers = df2regionidentifier(regions)
         results = np.load(f"{save_key}_TFBS.npz")["tfbs"]
 
         print("obs=groups, var=regions")
@@ -2654,6 +2677,7 @@ def seq_denovo_callhits(
     modisco_output: str | Path,
     model_path: str | Path | list[str] | list[Path],
     region_path: str | Path,
+    region_width: int = 1000,
     device="cuda:0",
     attr_key="deepshap",
     preset: Literal["footprint", "count"] = "footprint",
@@ -2675,6 +2699,8 @@ def seq_denovo_callhits(
         The path to the seq2PRINT model(s)
     region_path: str | Path
         The path to the peak file
+    region_width: int
+        The width of the region to use for the hits, this is used for finemo-gpu to extract the regions
     device: str
         The GPU device to use. e.g. 'cuda:0'
     attr_key: str
@@ -2728,6 +2754,8 @@ def seq_denovo_callhits(
             ohe_path,
             "-a",
             seq_attr,
+            "-w",
+            str(region_width),
             "-o",
             f"{save_path}.finemo.npz",
         ]
@@ -2767,10 +2795,10 @@ def seq_denovo_callhits(
         # chr     start   end     start_untrimmed end_untrimmed   motif_name      hit_coefficient hit_correlation hit_importance  strand
         #   peak_name       peak_id
         hits = pd.read_csv(f"{save_path}/hits.tsv", sep="\t")
-        regions = regionparser(region_path, printer=None, width=1000)
+        regions = regionparser(region_path, printer=None, width=region_width)
         region_used = regions.iloc[hits["peak_id"]]
         hits["chr"] = np.array(region_used.iloc[:, 0])
-        hits["distance_to_center"] = np.abs((hits["start"] + hits["end"]) // 2 - 500)
+        hits["distance_to_center"] = np.abs((hits["start"] + hits["end"]) // 2 - region_width // 2)
         hits["start"] = np.array(region_used.iloc[:, 1]) + np.array(hits["start"])
         hits["end"] = np.array(region_used.iloc[:, 1]) + np.array(hits["end"])
         hits["start_untrimmed"] = np.array(region_used.iloc[:, 1]) + np.array(
@@ -2934,7 +2962,7 @@ def delta_effects_seq2print(
             if type(lora_config) is not dict:
                 lora_config = json.load(open(lora_config, "r"))
             group_names_all = lora_config["group_names"]
-            group_names_query = {g: i for i, g in enumerate(group_names_all)}
+            group_names_query = {str(g): i for i, g in enumerate(group_names_all)}
             # Now query the index of finetune_cell_grouping in cell_grouping
             if type(group_names) is str:
                 group_names = [group_names]

@@ -144,7 +144,9 @@ def main():
     gpus = args.gpus
     save_name = args.save_name
     silent = args.silent
-    print("gpu", int(gpus[0]))
+    verbose = not silent
+    if verbose:
+        print("gpu", int(gpus[0]))
     torch.cuda.set_device(int(gpus[0]))
     save_name = save_name.split(",")  # if there are multiple save names save them separately.
 
@@ -212,9 +214,11 @@ def main():
                 "--foot_pt",
                 args.foot_pt,
                 "--seq_count",
-                " ".join(args.seq_count),
-                "--seq_foot",
-                " ".join(args.seq_foot),
+            ]
+            + seq_count
+            + ["--seq_foot"]
+            + seq_foot
+            + [
                 "--genome",
                 args.genome,
                 "--peaks",
@@ -239,7 +243,9 @@ def main():
 
         pool = ProcessPoolExecutor(max_workers=len(gpus))
         for gpu, command in zip(gpus, commands):
-            print(command)
+            if verbose:
+                print(f"Running on GPU {gpu}")
+                print(command)
             pool.submit(subprocess.run, command)
 
         pool.shutdown(wait=True)
@@ -262,7 +268,7 @@ def main():
         models = []
         reader = bigwig_reader if not args.read_numpy else numpy_reader
 
-        if seq_foot is not None:
+        if seq_count is not None:
             input_readers.append(
                 reader(
                     [
@@ -276,7 +282,7 @@ def main():
                 )
             )
             models.append(count_model)
-        if seq_count is not None:
+        if seq_foot is not None:
             input_readers.append(
                 reader(
                     [
@@ -302,7 +308,6 @@ def main():
         avg = np.mean(output_all, axis=0)
         avg = avg.reshape((len(lora_ids), len(summits), -1))
         avg = avg[..., 100:-100]
-        print(avg.shape)
 
         if args.write_numpy:
             np.savez(
@@ -316,7 +321,6 @@ def main():
             regions[2] = regions["summits"] + signal_window - 200
             regions = regions[[0, 1, 2]]
             for i, (lora_id, name) in enumerate(zip(lora_ids, save_name)):
-                print(name, lora_id)
                 attribution_to_bigwig(
                     avg[i],
                     regions,

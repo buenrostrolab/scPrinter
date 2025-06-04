@@ -61,7 +61,6 @@ def save_attrs(
     chrom_size,
     save_dir,
 ):
-    print("saving attrs")
     # slice the center regions of the projected attributions
     vs = projected_attributions[..., 520:-520]
 
@@ -75,13 +74,13 @@ def save_attrs(
 
     # fetch proper normalization factors
     if norm_key is not None:
-        print("using pre-calculated norm key", norm_key)
+        # print("using pre-calculated norm key", norm_key)
         if norm_key == "count":
             low, median, high = acc_model.count_norm
         elif norm_key == "footprint":
             low, median, high = acc_model.foot_norm
     else:
-        print("using calculated norm from the model")
+        # print("using calculated norm from the model")
         low, median, high = (
             np.quantile(vs, 0.05),
             np.quantile(vs, 0.5),
@@ -102,7 +101,7 @@ def save_attrs(
         projected_attributions = (projected_attributions - median) / (high - low)
         if verbose:
             print("normalizing", low, median, high)
-    print("filename_template", filename_template)
+    # print("filename_template", filename_template)
     if write_bigwig:
         attribution_to_bigwig(
             projected_attributions,
@@ -128,7 +127,7 @@ def save_attrs(
         ),
         hypo,
     )
-    print(filename_template.replace("{type}", "hypo") + "npz")
+    # print(filename_template.replace("{type}", "hypo") + "npz")
 
 
 def main(
@@ -161,22 +160,23 @@ def main(
         ids = models
         ids = ids.split(",")
         ids = [i.split("-") for i in ids]
-        print(ids[:5], ids[-5:])
-        ids = [[int(j) for j in i] for i in ids]
+        try:
+            ids = [[int(j) for j in i] for i in ids]
+        except:
+            # all ids processed
+            return
         id_strs = save_names.split(",")
         assert len(id_strs) == len(ids)
     else:
         ids = [[None]]
         id_strs = [""]
 
-    print(ids)
     gpus = gpus
     wrapper = wrapper
     method = method
     nth_output = nth_output
     norm_key = model_norm
 
-    print(gpus)
     if len(gpus) == 1:
         torch.cuda.set_device(int(gpus[0]))
     summits = pd.read_table(peaks, sep="\t", header=None)
@@ -198,7 +198,8 @@ def main(
     dna_len = acc_model.dna_len
 
     signal_window = 1000
-    print("signal_window", signal_window, "dna_len", dna_len)
+    if verbose:
+        print("signal_window", signal_window, "dna_len", dna_len)
     genome_str = deepcopy(genome)
     if genome == "hg38":
         genome = scp.genome.hg38
@@ -259,7 +260,6 @@ def main(
                         f"model_{id_str}.hypo.{wrapper}.{method}{extra}.{decay}.npz",
                     )
                 ) and (not overwrite):
-                    print("exists")
                     continue
                 else:
                     unfinished_ids.append(id)
@@ -314,7 +314,8 @@ def main(
                     f"hypo.{wrapper}.{method}{extra}.{decay}.npz",
                 )
             ) and (not overwrite):
-                print("exists")
+                if verbose:
+                    print("exists")
             else:
                 bs = int(math.ceil(len(summits) / n_split))
                 start_batches = [i * bs for i in range(n_split)]
@@ -432,7 +433,8 @@ def main(
                     + f"hypo.{wrapper}.{method}{extra}.{decay}.npz",
                 )
             ) and (not overwrite):
-                print("exists")
+                if verbose:
+                    print("exists")
                 continue
 
             model_0 = acc_model if id[0] is None else acc_model.collapse([int(i) for i in id])

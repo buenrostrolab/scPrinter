@@ -8,7 +8,7 @@ import socket
 from pathlib import Path
 
 import pandas as pd
-import transformers
+import scipy
 import wandb
 from ema_pytorch import EMA
 from wandb.sdk.lib.runid import generate_id
@@ -370,13 +370,13 @@ def entry(config=None, wandb_run_name="", enable_wandb=True, resume=False):
                     ),
                 )
 
-                grp2covs[cells_of_interest, 1] = coverage_in_peak.reshape((-1))
+                grp2covs[cells_of_interest, 1] = scipy.stats.zscore(coverage_in_peak.reshape((-1)))
 
         else:
             from scipy.stats import pearsonr
 
             print("pearsonr", pearsonr(grp2covs.reshape((-1)), coverage_in_peak.reshape((-1))))
-            grp2covs = np.concatenate([grp2covs, coverage_in_peak], axis=1)
+            grp2covs = np.concatenate([grp2covs, scipy.stats.zscore(coverage_in_peak)], axis=1)
 
         print("grp2covs", grp2covs.shape)
         acc_model = seq2PRINT(
@@ -537,17 +537,17 @@ def entry(config=None, wandb_run_name="", enable_wandb=True, resume=False):
         )  # how often to actually update, to save on compute (updates every 10th .update() call)
 
     torch.cuda.empty_cache()
-    optimizer = torch.optim.AdamW(acc_model.parameters(), lr=lr, weight_decay=weight_decay)
-    if "scheduler" in config:
-        scheduler = config["scheduler"]
-    else:
-        scheduler = False
-    if scheduler:
-        scheduler = transformers.get_cosine_schedule_with_warmup(
-            optimizer, num_warmup_steps=3000, num_training_steps=100000
-        )
-    else:
-        scheduler = None
+    # optimizer = torch.optim.AdamW(acc_model.parameters(), lr=lr, weight_decay=weight_decay)
+    # if "scheduler" in config:
+    #     scheduler = config["scheduler"]
+    # else:
+    #     scheduler = False
+    # if scheduler:
+    #     scheduler = transformers.get_cosine_schedule_with_warmup(
+    #         optimizer, num_warmup_steps=3000, num_training_steps=100000
+    #     )
+    # else:
+    #     scheduler = None
 
     val_loss, profile_pearson, across_pearson_fp, across_pearson_cov = validation_step_footprint(
         acc_model,
@@ -558,6 +558,11 @@ def entry(config=None, wandb_run_name="", enable_wandb=True, resume=False):
     )
     print("before training", val_loss, profile_pearson, across_pearson_fp, across_pearson_cov)
     # raise EOFError
+    optimizer_params = {
+        "lr": lr,
+        "weight_decay": weight_decay,
+    }
+
     acc_model.train()
     acc_model.fit(
         dispmodel,
@@ -565,8 +570,8 @@ def entry(config=None, wandb_run_name="", enable_wandb=True, resume=False):
         validation_data=dataloader["valid"],
         validation_size=(len(datasets["valid"].summits) // batch_size),
         max_epochs=300 if "epochs" not in config else config["epochs"],
-        optimizer=optimizer,
-        scheduler=scheduler,
+        optimizer_params=optimizer_params,
+        scheduler=None,
         validation_freq=(len(datasets["train"].summits) // batch_size),
         early_stopping=(5 if "early_stopping" not in config else config["early_stopping"]),
         return_best=True,
@@ -578,7 +583,7 @@ def entry(config=None, wandb_run_name="", enable_wandb=True, resume=False):
         use_wandb=enable_wandb,
         accumulate_grad=accumulate_grad,
         batch_size=batch_size,
-        coverage_warming=10 if lora_mode else 0,
+        coverage_warming=0 if "coverage_warming" not in config else int(config["coverage_warming"]),
     )
     if ema:
         del acc_model
@@ -613,6 +618,7 @@ def entry(config=None, wandb_run_name="", enable_wandb=True, resume=False):
     if ema:
         del ema
     torch.cuda.empty_cache()
+    torch.cuda.ipc_collect()
     gc.collect()
 
     # Now that the model is trained we use it to estimate the normalization range of the shap values

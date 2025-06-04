@@ -544,7 +544,7 @@ class seq2PRINT(nn.Module):
         validation_data=None,
         validation_size=None,
         max_epochs=100,
-        optimizer=None,
+        optimizer_params=None,
         scheduler=None,
         validation_freq=100,
         early_stopping=False,
@@ -643,7 +643,7 @@ class seq2PRINT(nn.Module):
                     if requires_grads[name] != param.requires_grad:
                         print("duplicated name", name, param.requires_grad, requires_grads[name])
                         raise ValueError("Duplicated name")
-                requires_grads[name] = param.requires_grad
+                requires_grads[name] = copy.deepcopy(param.requires_grad)
                 param.requires_grad = False
             for p in self.profile_cnn_model.adjustment_count.parameters():
                 p.requires_grad = True
@@ -651,11 +651,15 @@ class seq2PRINT(nn.Module):
                 p.requires_grad = True
             total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
             print("total trainable params", total_params)
-            for group in optimizer.param_groups:
-                lr = group["lr"]
-                print("old lr", lr)
-                group["lr"] = min(1e-3, group["lr"] * 10)
-                print("new lr", group["lr"])
+            lr_backup = optimizer_params["lr"]
+            optimizer_params["lr"] = min(optimizer_params["lr"] * 10, 5e-4)
+        optimizer = torch.optim.AdamW(
+            filter(lambda p: p.requires_grad, self.parameters()), **optimizer_params
+        )
+        print(
+            "trainable params in total",
+            sum(p.numel() for p in self.parameters() if p.requires_grad),
+        )
 
         for epoch in range(max_epochs):
             moving_avg_loss = 0
@@ -671,19 +675,39 @@ class seq2PRINT(nn.Module):
                 leave=False,
                 dynamic_ncols=True,
             )
-
-            if (epoch == coverage_warming) and coverage_warming > 0:
+            # print ("backend weightrs")
+            # print (self.dna_cnn_model.conv.A_embedding[0].weight.data,
+            #        self.dna_cnn_model.conv.A_embedding[0].weight.requires_grad,)
+            # print ("profile_cnn_model.weights")
+            # print (self.profile_cnn_model.adjustment_footprint[0].weight.data,
+            #        self.profile_cnn_model.adjustment_footprint[0].bias.data,
+            #        self.profile_cnn_model.adjustment_footprint[-1].weight.data,
+            #        self.profile_cnn_model.adjustment_footprint[-1].bias.data,
+            #        self.profile_cnn_model.adjustment_count.weight.data,
+            #        self.profile_cnn_model.adjustment_count.bias.data,
+            #        self.profile_cnn_model.adjustment_count.bias.requires_grad,)
+            if (epoch == coverage_warming) and (coverage_warming > 0):
+                print("exiting warming up")
                 for name, param in self.named_parameters():
                     param.requires_grad = requires_grads[name]
-                for group in optimizer.param_groups:
-                    print("revert lr", lr)
-                    group["lr"] = lr
-                # for p in self.profile_cnn_model.adjustment_count.parameters():
-                #     p.requires_grad = False
-                # for p in self.profile_cnn_model.adjustment_footprint.parameters():
-                #     p.requires_grad = False
+                hyperparams = optimizer.param_groups[0]
+                print(hyperparams.get("lr"), hyperparams.get("weight_decay"))
+                # restart optimizer to remove all the grad momentum etc...
+                early_stopping_counter = 0
+                for p in self.profile_cnn_model.adjustment_count.parameters():
+                    p.requires_grad = False
+                for p in self.profile_cnn_model.adjustment_footprint.parameters():
+                    p.requires_grad = False
+                optimizer_params["lr"] = lr_backup
+                optimizer = torch.optim.AdamW(
+                    filter(lambda p: p.requires_grad, self.parameters()), **optimizer_params
+                )
+                print(
+                    "trainable params in total",
+                    sum(p.numel() for p in self.parameters() if p.requires_grad),
+                )
 
-            # At the beginning of each epoch, we resample the training data
+                # At the beginning of each epoch, we resample the training data
             training_data_epoch_loader = training_data.resample()
             for data in training_data_epoch_loader:
 
@@ -862,6 +886,7 @@ class seq2PRINT(nn.Module):
                     if epoch < coverage_warming:
                         print("Early stopping on coverage warming")
                         coverage_warming = epoch
+                        early_stopping_counter = 0
                     else:
                         print("Early stopping")
                         break

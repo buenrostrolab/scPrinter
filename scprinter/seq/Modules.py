@@ -542,20 +542,30 @@ class BiasAdjustedFootprintsHead(nn.Module):
         super().__init__()
         self.footprints_head = footprints_head
         self.adjustment_footprint = nn.Sequential(
-            nn.Linear(in_features=bias_dim, out_features=32, bias=True),
-            nn.GELU(),  # For non-linearity
-            nn.Linear(in_features=32, out_features=1, bias=True),
+            nn.Linear(in_features=bias_dim, out_features=min(int(bias_dim * 16), 32), bias=True),
+            # nn.Sigmoid(),  # For non-linearity
+            nn.GELU(),
+            nn.Linear(in_features=min(int(bias_dim * 16), 32), out_features=1, bias=True),
         )
-        # Initialize as all 0s
+        # Can't be all zeros, otherwise they share gradient.. then it's nonsense.
         for n, p in self.adjustment_footprint.named_parameters():
-            p.data = torch.zeros_like(p.data)  # -1 * p.data if torch.sum(p.data) < 0 else p.data
+            p.data = (
+                torch.zeros_like(p.data) + torch.randn_like(p.data) * 0.01
+            )  # -1 * p.data if torch.sum(p.data) < 0 else p.data
         # Only last layer bias should be 1
-        self.adjustment_footprint[-1].bias.data = torch.tensor([1.0])
+        self.adjustment_footprint[-1].bias.data = (
+            torch.tensor([1.0]) + torch.randn_like(self.adjustment_footprint[-1].bias.data) * 0.01
+        )
 
         # Assuming linear adjustment for counts
         self.adjustment_count = nn.Linear(in_features=bias_dim, out_features=1, bias=True)
-        self.adjustment_count.weight.data = torch.zeros_like(self.adjustment_count.weight.data)
-        self.adjustment_count.bias.data = torch.tensor([1.0])
+        self.adjustment_count.weight.data = (
+            torch.zeros_like(self.adjustment_count.weight.data)
+            + torch.randn_like(self.adjustment_count.weight.data) * 0.01
+        )
+        self.adjustment_count.bias.data = (
+            torch.tensor([1.0]) + torch.randn_like(self.adjustment_count.bias.data) * 0.01
+        )
         # self.coverages = bias_dim
         self.adjust_foot = 1
         self.adjust_count = 1

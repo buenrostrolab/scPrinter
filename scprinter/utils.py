@@ -271,6 +271,70 @@ def get_peak_bias(
     return None
 
 
+def cal_cpg(bin_str):
+    cg_count = bin_str.count("CG")
+    # Each N leads to 2 2-mer with "N": "-N" and "N-"
+    N_count = bin_str.count("N")
+    # However if there are 2 "N" next to each other, you would overcount the number of 2-mers that have "N"
+
+    # NN_count = 0
+    # for i in range(len(bin_str) - 1):
+    # 	if bin_str[i:i+2] == 'NN':
+    # 		NN_count += 1
+    NN_count = len(re.findall(r"(N)(?=\1)", bin_str))
+
+    total_count = len(bin_str) - 1
+    total_count = total_count - N_count * 2 + NN_count
+    if bin_str[0] == "N":
+        total_count += 1
+    elif bin_str[-1] == "N":
+        total_count += 1
+
+    if total_count > 0:
+        rate = cg_count / (total_count)
+        if rate < 0:
+            print(cg_count, len(bin_str), N_count, NN_count)
+            print(str)
+            raise EOFError
+    else:
+        rate = 0.0
+
+    return rate
+
+
+def get_peak_CpG_density(
+    data: anndata.AnnData | str | Path | pd.DataFrame | pyranges.PyRanges | list[str], genome
+):
+    """
+    Calculate the CpG density of the peaks (chromvar function)
+
+    Parameters
+    ----------
+    data: anndata.AnnData | pd.DataFrame
+        AnnData object containing cell x peak data. Or anything that the regionparser function can parse.
+    genome: Genome
+        Genome object
+
+    Returns
+    -------
+    CpG density of the peaks (from 0-1)
+    """
+    adata = data
+    if type(adata) is anndata.AnnData:
+        peaks = regionparser(list(adata.var_names))
+    else:
+        peaks = regionparser(adata)
+
+    cpg_density = []
+    for chrom, start, end in tqdm(peaks.iloc[:, 0:3].values, desc="Fetching CpG density"):
+        seq = genome.fetch_seq(chrom, start, end).upper()
+        cpg_density.append(cal_cpg(seq))
+    if type(adata) is not anndata.AnnData:
+        return cpg_density
+    adata.var["cpg_density"] = cpg_density
+    return None
+
+
 def get_genome_bg(genome):
     """
     Get the background nucleotide frequency of the genome
