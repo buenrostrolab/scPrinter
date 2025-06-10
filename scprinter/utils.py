@@ -359,7 +359,7 @@ def regionparser(
     regions: str | Path | pd.DataFrame | pyranges.PyRanges | list[str],
     printer=None,
     width: int | None = None,
-    header: bool = False,
+    header: bool | None = None,
 ):
     """
     This function parses the regions specification and returns a dataframe with the first three columns ['Chromosome', 'Start', 'End']
@@ -381,7 +381,7 @@ def regionparser(
         If None, the width will be the same as the input regions, and would be 1000bp when regions are specified by gene names.
     header: bool
         Only when you input a file path. If True, the first row of the regions dataframe is considered as the header. If False, the first row is considered as data.
-        This is useful when the regions are specified by a file that has a header.
+        This is useful when the regions are specified by a file that has a header. If None, if the filename ends with '.bed' or '.bed.gz' , it will be considered as True, otherwise False.
     Returns
     -------
     regions: pd.DataFrame
@@ -408,6 +408,9 @@ def regionparser(
     elif type(regions) is pd.core.series.Series:
         regions = pd.DataFrame(regions.values[None])
     elif type(regions) is str:
+        if (regions.endswith(".bed")) or (regions.endswith(".bed.gz")):
+            header = True if header is None else header
+
         if ":" in regions and "-" in regions:
             # regions = pd.DataFrame([re.split(':|-', regions)], columns=['Chromosome', 'Start', 'End'])
             regions = pd.DataFrame([re.split(":|-", regions)])
@@ -424,6 +427,7 @@ def regionparser(
             regions = pd.DataFrame({"Chromosome": chrom, "Start": start})
             regions["End"] = regions["Start"] + int(printer.gene_region_width / 2)
             regions["Start"] -= int(printer.gene_region_width / 2)
+            # regions_pr = dftopyranges(regions)
         else:
             # regions_pr = pyranges.readers.read_bed(regions)
             regions = pd.read_csv(regions, sep="\t", header=0 if header else None)
