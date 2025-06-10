@@ -359,6 +359,7 @@ def regionparser(
     regions: str | Path | pd.DataFrame | pyranges.PyRanges | list[str],
     printer=None,
     width: int | None = None,
+    header: bool = False,
 ):
     """
     This function parses the regions specification and returns a dataframe with the first three columns ['Chromosome', 'Start', 'End']
@@ -378,7 +379,9 @@ def regionparser(
     width: int | None
         The width of the regions. When specified, the regions will be resized to the specified width.
         If None, the width will be the same as the input regions, and would be 1000bp when regions are specified by gene names.
-
+    header: bool
+        Only when you input a file path. If True, the first row of the regions dataframe is considered as the header. If False, the first row is considered as data.
+        This is useful when the regions are specified by a file that has a header.
     Returns
     -------
     regions: pd.DataFrame
@@ -423,7 +426,7 @@ def regionparser(
             regions["Start"] -= int(printer.gene_region_width / 2)
         else:
             # regions_pr = pyranges.readers.read_bed(regions)
-            regions = pd.read_csv(regions, sep="\t", header=None)
+            regions = pd.read_csv(regions, sep="\t", header=0 if header else None)
 
     else:
         print("Expecting type of list, pd.dataframe, str. Got: ", type(regions), regions)
