@@ -21,8 +21,11 @@ from logomaker.src.Glyph import Glyph
 from statsmodels.stats.multitest import fdrcorrection
 from tangermeme.io import read_meme
 from tangermeme.plot import plot_logo
-from tangermeme.tools.tomtom import tomtom
 
+try:
+    from tangermeme.tools.tomtom import tomtom
+except:
+    from memelite import tomtom
 try:
     from scprinter.motifs import read_pfms, tomtom_motif_motif_matrix
 except:
