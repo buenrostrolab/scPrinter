@@ -25,7 +25,12 @@ from pyfaidx import Fasta
 from scipy.sparse import SparseEfficiencyWarning, csr_matrix, diags, hstack, vstack
 from statsmodels.stats.multitest import fdrcorrection
 from tangermeme.io import read_meme
-from tangermeme.tools.tomtom import tomtom
+
+try:
+    from tangermeme.tools.tomtom import tomtom
+except:
+    from memelite import tomtom
+
 from tqdm.auto import tqdm, trange
 from typing_extensions import Literal
 
