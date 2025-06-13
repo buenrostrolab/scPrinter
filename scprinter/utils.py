@@ -409,7 +409,7 @@ def regionparser(
         regions = pd.DataFrame(regions.values[None])
     elif type(regions) is str:
         if (regions.endswith(".bed")) or (regions.endswith(".bed.gz")):
-            header = True if header is None else header
+            header = False if header is None else header
 
         if ":" in regions and "-" in regions:
             # regions = pd.DataFrame([re.split(':|-', regions)], columns=['Chromosome', 'Start', 'End'])
