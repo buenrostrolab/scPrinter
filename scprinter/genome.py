@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os.path
+import pickle
 from pathlib import Path
 
 import gffutils
@@ -277,6 +278,41 @@ class Genome:
                     self.fetch_bias_bw(verify=True)
 
         return bias_bw
+
+    def fetch_cpg_index(self):
+        fa_path = str(self.fetch_fa())
+        cpg_index = fa_path + "_cpg_index.pkl"
+        if not os.path.exists(cpg_index):
+            print("Building CpG index...")
+            cpg_index_all, cpg_num, cpg_coord = build_CpG_index(self)
+            with open(cpg_index, "wb") as f:
+                pickle.dump((cpg_index_all, cpg_num, cpg_coord), f)
+        else:
+            with open(cpg_index, "rb") as f:
+                cpg_index_all, cpg_num, cpg_coord = pickle.load(f)
+        return cpg_index_all, cpg_num, cpg_coord
+
+
+def build_CpG_index(genome):
+    fa_path = Path(genome.fetch_fa())
+    fasta = Fasta(fa_path, as_raw=True)
+    cpg_index_all = {}
+    cpg_num = {}
+    chroms_all = set(genome.chrom_sizes.keys())
+    cpg_coord = {}
+    for chrom in chroms_all:
+        cpg_index_all[chrom] = {}
+        cpg_coord[chrom] = []
+        seq = fasta[chrom][:].upper()
+        count = 0
+        for i in trange(len(seq) - 1):
+            if seq[i : i + 2] == "CG":
+                cpg_index_all[chrom][i + 1] = count
+                cpg_coord[chrom].append(i + 1)
+                count += 1
+        cpg_num[chrom] = count
+    fasta.close()
+    return cpg_index_all, cpg_num, cpg_coord
 
 
 def predict_genome_tn5_bias(

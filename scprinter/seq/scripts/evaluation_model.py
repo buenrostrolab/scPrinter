@@ -254,6 +254,7 @@ def main(
             unfinished_id_strs = []
             for id, id_str in zip(ids, id_strs):
                 # id_str = "-".join([str(x) for x in id])
+
                 if os.path.exists(
                     os.path.join(
                         save_dir,
@@ -426,11 +427,15 @@ def main(
             id_str = id_strs[index]
             # id_str = "-".join([str(i) for i in id]) if id[0] is not None else None
             bar.set_description(f"working on {id_str}")
+            filename = f"model_{id_str}." if id[0] is not None else ""
+            filename += f"hypo.{wrapper}.{method}{extra}.{decay}."
+            if (id[0] is None) and ((start != 0) or (end != dataset.summits.shape[0])):
+                filename += f"{start}-{end}."
+            filename += "npz"
             if os.path.exists(
                 os.path.join(
                     save_dir,
-                    (f"model_{id_str}." if id[0] is not None else "")
-                    + f"hypo.{wrapper}.{method}{extra}.{decay}.npz",
+                    filename,
                 )
             ) and (not overwrite):
                 if verbose:
