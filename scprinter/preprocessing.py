@@ -733,7 +733,14 @@ def create_frag_group(
 
 
 def call_peak_one_group(
-    file_path, frag_file, grouping, name, preset, clean_temp=True, sample_names=None
+    file_path,
+    frag_file,
+    grouping,
+    name,
+    preset,
+    clean_temp=True,
+    sample_names=None,
+    genome_size=None,
 ):
     if grouping is not None:
         create_frag_group(file_path, frag_file, grouping, name, sample_names)
@@ -746,6 +753,7 @@ def call_peak_one_group(
         name,
         os.path.join(file_path, "macs2"),
         p_cutoff=0.01 if preset == "seq2PRINT" else None,
+        genome_size=genome_size,
     )
     if clean_temp:
         if grouping is not None:
@@ -765,6 +773,7 @@ def call_peaks(
     n_jobs=20,
     overwrite=False,
     sample_names=None,
+    genome_size=None,
     **kwargs,
 ):
     """
@@ -830,10 +839,18 @@ def call_peaks(
                 preset,
                 clean_temp,
                 sample_names,
+                genome_size=genome_size,
             )
         else:
             call_peak_one_group(
-                printer.file_path, frag_file, grouping, name, preset, clean_temp, sample_names
+                printer.file_path,
+                frag_file,
+                grouping,
+                name,
+                preset,
+                clean_temp,
+                sample_names,
+                genome_size=genome_size,
             )
     if n_jobs > 1:
         pool.shutdown(wait=True)

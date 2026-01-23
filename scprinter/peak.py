@@ -404,7 +404,7 @@ def clean_macs2(
     return cleaned_peaks, summary
 
 
-def macs2(frag_file, name, outdir, format="BEDPE", p_cutoff=None):
+def macs2(frag_file, name, outdir, format="BEDPE", p_cutoff=None, genome_size=None):
     """
     This function runs the MACS2 peak calling algorithm.
 
@@ -475,6 +475,8 @@ def macs2(frag_file, name, outdir, format="BEDPE", p_cutoff=None):
         commands.extend(["-p", str(p_cutoff)])
     else:
         commands.extend(["-q", "0.01"])
+    if genome_size is not None:
+        commands.extend(["-g", str(genome_size)])
     print("running macs2 with", " ".join(commands))
     subprocess.run(commands)
 
