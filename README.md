@@ -87,7 +87,11 @@ mamba env config vars set SCPRINTER_DATA="/n/holylfs06/LABS/buenrostro_lab/Lab/.
 
 ## Usage and Tutorial
 
-Quick-start tutorials can be found at [here](https://ruochiz.com/scprinter_doc/tutorials/PBMC_scATAC_tutorial.html) (for single cell ATAC) and [here](https://ruochiz.com/scprinter_doc/tutorials/PBMC_bulkATAC_tutorial.html) (for bulk ATAC). For more detailed information please see our documentation and tutorials at https://ruochiz.com/scprinter_doc/. API reference can be found at https://ruochiz.com/scprinter_doc/reference/index.html.
+Quick-start tutorials for seq2PRINT TF binding prediction can be found at [here](https://ruochiz.com/scprinter_doc/tutorials/PBMC_scATAC_tutorial.html) (for single cell ATAC) and [here](https://ruochiz.com/scprinter_doc/tutorials/PBMC_bulkATAC_tutorial.html) (for bulk ATAC). 
+
+If you do not need the seq2PRINT-inferred TF binding, but only wish to calculate the raw multiscale footprints (e.g., for tracking nucleosome changes) across conditions and genomic loci, please use [this tutorial](https://github.com/buenrostrolab/PRINT/blob/main/analyses/degron/CTCF_degron_tutorial.ipynb) as a reference. 
+
+For more detailed information please see our documentation and tutorials at https://ruochiz.com/scprinter_doc/. API reference can be found at https://ruochiz.com/scprinter_doc/reference/index.html.
 
 ## Citation
 
