@@ -1,4 +1,9 @@
 import logging
+import os
+import pickle
+import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from queue import Queue
 from typing import Literal, Union
 
 import anndata
@@ -9,6 +14,7 @@ import scipy.sparse as sparse
 from anndata import AnnData
 from pynndescent import NNDescent
 from scipy.sparse import csr_matrix as scipy_csr_matrix
+from scipy.sparse import issparse
 from tqdm.auto import tqdm, trange
 
 from .utils import get_peak_bias, get_peak_CpG_density
@@ -68,12 +74,13 @@ def sample_bg_peaks(
             get_peak_CpG_density(adata, genome)
 
     assert method in ["nndescent", "chromvar"], "Method not supported"
-    reads_per_peak = adata.X.sum(axis=0)
-    assert np.min(reads_per_peak) > 0, "Some peaks have no reads"
-    reads_per_peak = np.log10(reads_per_peak)
-    reads_per_peak = np.array(reads_per_peak).reshape((-1))
-    adata.var["reads_per_peak"] = reads_per_peak
-    if len(bg_columns) > 0:
+    reads_per_peak = np.array(adata.X.sum(axis=0)).flatten()
+    if "reads_per_peak" in bg_columns:
+        assert np.min(reads_per_peak) > 0, "Some peaks have no reads"
+        reads_per_peak = np.log10(reads_per_peak)
+        reads_per_peak = np.array(reads_per_peak).reshape((-1))
+        adata.var["reads_per_peak"] = reads_per_peak
+    if len(bg_columns) > 1:
         mat = np.array(adata.var[list(bg_columns)].values).T
         chol_cov_mat = np.linalg.cholesky(np.cov(mat))
         trans_norm_mat = scipy.linalg.solve_triangular(
@@ -82,6 +89,7 @@ def sample_bg_peaks(
     else:
         mat = np.array([reads_per_peak])
         trans_norm_mat = mat.transpose()
+        # print (trans_norm_mat.shape)
 
     print("Sampling nearest neighbors")
     if bg_set is not None:
@@ -174,7 +182,7 @@ def bg_sample_helper(bin_membership, bin_p, bin_density, niterations):
     return out
 
 
-def scipy_to_cupy_sparse(sparse_matrix):
+def scipy_to_cupy_sparse(sparse_matrix, csr_matrix=None):
     """
     A function that converts a SciPy sparse matrix to a CuPy sparse matrix. Only supports CSR matrices now.
     Parameters
@@ -207,7 +215,18 @@ def scipy_to_cupy_sparse(sparse_matrix):
     return cupy_sparse_matrix
 
 
-def compute_deviations(adata, chunk_size: int = 10000, device="cuda", tf_chunk_size: int = -1):
+def compute_deviations(
+    adata,
+    chunk_size: int = 10000,
+    device="cuda",
+    tf_chunk_size: int = -1,
+    expectation_var: Union[np.ndarray, None] = None,
+    expectation_obs: Union[np.ndarray, None] = None,
+    bg_peaks=None,
+    motif_match=None,
+    motif_name=None,
+    verbose=True,
+):
     """
     Computes the deviation of motif matches from the background for each cell.
 
@@ -228,41 +247,65 @@ def compute_deviations(adata, chunk_size: int = 10000, device="cuda", tf_chunk_s
         The AnnData object containing the deviation values for each cell and motif match.
     """
 
-    assert (
-        "bg_peaks" in adata.varm_keys()
-    ), "Cannot find background peaks in the input object, please first run get_bg_peaks!"
+    if bg_peaks is None:
+        assert (
+            "bg_peaks" in adata.varm_keys()
+        ), "Cannot find background peaks in the input object, please first run get_bg_peaks!"
+        bg_peaks = adata.varm["bg_peaks"]
+
     if device == "cuda":
         import cupy as backend
     else:
         import numpy as backend
 
     print("Computing expectation reads per cell and peak...")
-    if "expectation_var" not in adata.var:
-        expectation_var = backend.asarray(adata.X.sum(0), dtype=backend.float32).reshape(
+    if expectation_var is None:
+        if "expectation_var" not in adata.var:
+            expectation_var = backend.asarray(adata.X.sum(0), dtype=backend.float32).reshape(
+                (1, adata.X.shape[1])
+            )
+        else:
+            print("precomputed expectation_var")
+            expectation_var = backend.asarray(
+                adata.var["expectation_var"], dtype=backend.float32
+            ).reshape((1, adata.X.shape[1]))
+    else:
+        print("Using provided expectation_var")
+        expectation_var = backend.asarray(expectation_var, dtype=backend.float32).reshape(
             (1, adata.X.shape[1])
         )
-    else:
-        print("precomputed expectation_var")
-        expectation_var = backend.asarray(
-            adata.var["expectation_var"], dtype=backend.float32
-        ).reshape((1, adata.X.shape[1]))
     expectation_var /= expectation_var.sum()
-    if "expectation_obs" not in adata.obs:
-        expectation_obs = np.asarray(adata.X.sum(1), dtype=np.float32).reshape(
-            (adata.X.shape[0], 1)
-        )
+
+    if expectation_obs is None:
+        if "expectation_obs" not in adata.obs:
+            expectation_obs = np.asarray(adata.X.sum(1), dtype=np.float32).reshape(
+                (adata.X.shape[0], 1)
+            )
+        else:
+            print("precomputed expectation_obs")
+            expectation_obs = np.asarray(adata.obs["expectation_obs"], dtype=np.float32).reshape(
+                (adata.X.shape[0], 1)
+            )
     else:
-        print("precomputed expectation_obs")
-        expectation_obs = np.asarray(adata.obs["expectation_obs"], dtype=np.float32).reshape(
+        print("Using provided expectation_obs")
+        expectation_obs = np.asarray(expectation_obs, dtype=np.float32).reshape(
             (adata.X.shape[0], 1)
         )
 
-    motif_match = adata.varm["motif_match"]
+    if motif_match is None:
+        assert (
+            "motif_match" in adata.varm_keys()
+        ), "Cannot find motif match in the input object, please first run get_motif_match!"
+        motif_match = adata.varm["motif_match"]
+    if motif_name is None:
+        motif_name = adata.uns["motif_name"]
     if tf_chunk_size < 0:
         tf_chunk_size = motif_match.shape[1]
     dev_all = []
     for motif_match_start in tqdm(
-        list(range(0, motif_match.shape[1], tf_chunk_size)), desc="Processing TF chunks"
+        list(range(0, motif_match.shape[1], tf_chunk_size)),
+        desc="Processing TF chunks",
+        disable=not verbose,
     ):
         motif_match_tp = motif_match[:, motif_match_start : motif_match_start + tf_chunk_size]
 
@@ -275,12 +318,14 @@ def compute_deviations(adata, chunk_size: int = 10000, device="cuda", tf_chunk_s
             motif_match_tp = backend.asarray(motif_match_tp, dtype=backend.float32)
 
         obs_dev = np.zeros((adata.n_obs, motif_match_tp.shape[1]), dtype=np.float32)
-        n_bg_peaks = adata.varm["bg_peaks"].shape[1]
+        n_bg_peaks = bg_peaks.shape[1]
         # bg_dev = np.zeros((n_bg_peaks, adata.n_obs, motif_match.shape[1]), dtype=np.float32)
         mean_bg_dev = np.zeros_like(obs_dev)
         std_bg_dev = np.zeros_like(obs_dev)
 
-        for start in tqdm(range(0, adata.n_obs, chunk_size), desc="Processing chunks"):
+        for start in tqdm(
+            range(0, adata.n_obs, chunk_size), desc="Processing chunks", disable=not verbose
+        ):
             end = min(start + chunk_size, adata.n_obs)
             temp_adata = adata[start:end].copy()
             X_chunk = temp_adata.X
@@ -303,8 +348,8 @@ def compute_deviations(adata, chunk_size: int = 10000, device="cuda", tf_chunk_s
             bg_dev_chunk = np.zeros(
                 (n_bg_peaks, end - start, motif_match_tp.shape[1]), dtype=np.float32
             )
-            for i in trange(n_bg_peaks, desc="Processing background peaks"):
-                bg_peak_idx = backend.array(adata.varm["bg_peaks"][:, i]).flatten()
+            for i in trange(n_bg_peaks, desc="Processing background peaks", disable=not verbose):
+                bg_peak_idx = backend.array(bg_peaks[:, i]).flatten()
                 bg_motif_match = motif_match_tp[bg_peak_idx, :]
                 res = _compute_deviations(
                     bg_motif_match,
@@ -328,7 +373,7 @@ def compute_deviations(adata, chunk_size: int = 10000, device="cuda", tf_chunk_s
     dev = AnnData(
         dev, dtype="float32", obs=adata.obs.copy()
     )  # Convert back to CPU for AnnData compatibility
-    dev.var_names = adata.uns["motif_name"]
+    dev.var_names = motif_name
     return dev
 
 
@@ -351,6 +396,163 @@ def _compute_deviations(motif_match, count, expectation_obs, expectation_var, de
     backend.divide(observed - expected, expected, out=out)
     out[expected == 0] = 0
     return out
+
+
+def compute_deviations_batch(
+    adata_paths,
+    bg_peaks,
+    motif_match,
+    motif_name,
+    save_path,
+    gpus=[],
+    chunk_size: int = 10000,
+    tf_chunk_size: int = -1,
+    save_key="",
+    launch=True,
+    overwrite=False,
+    clean=True,
+):
+
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    final_result_path = os.path.join(save_path, f"{save_key}_chromvar_deviations.h5ad")
+    if os.path.exists(final_result_path) and (not overwrite):
+        print(f"✅ Final result {final_result_path} already exists, skipping computation.")
+        return anndata.read_h5ad(final_result_path)
+
+    clean_files = []
+    if type(adata_paths) is AnnData:
+        # Now split it into multiple parts and save them
+        adata = adata_paths
+        batch_size = (adata.n_obs // len(gpus) + 1) if len(gpus) > 0 else adata.n_obs
+        adata_paths = []
+        for i in range(0, adata.n_obs, batch_size):
+            part_path = os.path.join(save_path, f"{save_key}_input_part_{len(adata_paths)}.h5ad")
+            tmp = adata[i : i + batch_size].copy()
+            index_name = tmp.obs_names.copy()
+            del tmp.obs
+            del tmp.obsm
+            del tmp.varm
+            tmp.obs_names = index_name
+            tmp.write_h5ad(part_path)
+            adata_paths.append(part_path)
+        print(f"Split input AnnData into {len(adata_paths)} parts and saved to {save_path}")
+        clean_files = adata_paths.copy()
+
+    tmp_file_path = os.path.join(save_path, f"{save_key}_tmp_info.pkl")
+    clean_files.append(tmp_file_path)
+    if (not os.path.exists(tmp_file_path)) or overwrite:
+        # Compute expectations and save intermediate
+        expectation_var = 0
+
+        for adata_path in tqdm(adata_paths, desc="calculating expectations"):
+            adata = anndata.read_h5ad(adata_path)
+
+            expectation_var += np.asarray(adata.X.sum(0), dtype=np.float32).reshape(
+                (1, adata.X.shape[1])
+            )
+        expectation_var /= expectation_var.sum()
+
+        data_to_dump = [expectation_var, bg_peaks, motif_match, motif_name]
+
+        with open(tmp_file_path, "wb") as f:
+            pickle.dump(data_to_dump, f)
+        print(f"✅ Saved expectation values and other data to {tmp_file_path}")
+    else:
+        print(f"✅ Using existing expectation values and other data from {tmp_file_path}")
+
+    if not gpus:
+        print("⚠️ No GPUs specified, using CPU for computation.")
+        gpus = ["cpu"]
+
+    # Prepare available GPU queue
+    available_gpus = Queue()
+    for gpu in gpus:
+        available_gpus.put(gpu)
+
+    # Prepare job queue
+    job_queue = Queue()
+    all_finished = True
+    for idx, path in enumerate(adata_paths):
+        part_path = os.path.join(save_path, f"{save_key}_part_{idx}.h5ad")
+        if not os.path.exists(part_path):
+            job_queue.put((path, idx))
+            all_finished = False
+
+    def run_job(path, part, gpu, launch=True, overwrite=False):
+        device = "cuda" if gpu != "cpu" else "cpu"
+        env = os.environ.copy()
+        if gpu != "cpu":
+            env["CUDA_VISIBLE_DEVICES"] = str(gpu)
+
+        out_path = os.path.join(save_path, f"{save_key}_part_{part}.h5ad")
+
+        command = (
+            [
+                "methyl_chromvar_entrance",
+                "--adata",
+                str(path),
+                "--chunk_size",
+                str(chunk_size),
+                "--tf_chunk_size",
+                str(tf_chunk_size),
+                "--device",
+                str(device),
+                "--info_pickle",
+                str(tmp_file_path),
+                "--save_path",
+                str(out_path),
+            ]
+            + (["--overwrite"] if overwrite else [])
+            + (["--verbose"] if not launch else [])
+        )
+        if launch:
+            print(f"🚀 Starting job part {part} on GPU {gpu}")
+            subprocess.run(command, env=env, check=True)
+            print(f"✅ Finished job part {part} on GPU {gpu}")
+        else:
+            print("Please run the following command to compute deviations:")
+
+            print(f"CUDA_VISIBLE_DEVICES={gpu} " + " ".join(command))
+        return gpu  # return freed GPU
+
+    # Parallel execution
+    futures = set()
+    print(job_queue.qsize(), "jobs to run on", len(gpus), "GPUs")
+    with ThreadPoolExecutor(max_workers=len(gpus)) as executor:
+        # Initial fill: one job per GPU
+        while (not job_queue.empty()) and (not available_gpus.empty()):
+            path, part = job_queue.get()
+            gpu = available_gpus.get()
+            futures.add(executor.submit(run_job, path, part, gpu, launch, overwrite))
+
+        while not job_queue.empty():
+            for done in as_completed(futures):
+                freed_gpu = done.result()
+                path, part = job_queue.get()
+                futures.add(executor.submit(run_job, path, part, freed_gpu, launch, overwrite))
+                futures.remove(done)  # Remove the completed future
+                break
+        # wait till all jobs are done
+        executor.shutdown(wait=True)
+
+    # all finishes, concat results
+    if launch or all_finished:
+        print("All jobs completed. Concatenating results...")
+        adata_list = []
+        for part in range(len(adata_paths)):
+            part_path = os.path.join(save_path, f"{save_key}_part_{part}.h5ad")
+            adata_part = anndata.read_h5ad(part_path)
+            os.remove(part_path)  # Clean up part files
+            adata_list.append(adata_part)
+        if clean:
+            for f in clean_files:
+                print("Cleaning up", f)
+                os.remove(f)
+        adata_combined = anndata.concat(adata_list, axis=0)
+        adata_combined.write_h5ad(os.path.join(save_path, f"{save_key}_chromvar_deviations.h5ad"))
+
+        return adata_combined
 
 
 def bag_deviations(
@@ -485,5 +687,88 @@ def permutation_test(
         },
         index=adata.var_names,
     )
+
+    return res
+
+
+def motif_peak_ztest(
+    adata=None, peak_set: np.ndarray = None, bg_peaks=None, motif_match=None, motif_names=None
+):
+    """
+    Peak-level motif enrichment Z-test (chromVAR style)
+
+    Parameters
+    ----------
+    peak_set : array-like
+        Vector of peak indices (reference peak space)
+    bg_peaks : ndarray
+        [n_peaks x n_bg_iterations] integer matrix of sampled background peak indices
+    motif_match : sparse.csr_matrix
+        [n_peaks x n_motifs] binary peak-by-motif matrix
+    motif_names : list (optional)
+        Column names for motifs (default: use positions 0..n_motifs-1)
+    Returns
+    -------
+    pandas.DataFrame
+        Motif enrichment results, sorted by p-value then motif frequency.
+    """
+    if adata is not None:
+        print("Using adata to extract motif_match, motif_names and bg_peaks")
+        motif_match = adata.varm["motif_match"]
+        motif_names = adata.uns["motif_name"]
+        bg_peaks = adata.varm["bg_peaks"]
+
+    n_peaks, n_motifs = motif_match.shape
+    assert n_peaks == bg_peaks.shape[0], "TF matrix and background peak matrix must match in #peaks"
+    assert np.all(
+        np.isin(peak_set, np.arange(n_peaks))
+    ), "peak_set contains indices beyond available peaks"
+
+    if motif_names is None:
+        motif_names = np.array([f"motif_{i}" for i in range(n_motifs)])
+
+    # ---- Observed motif frequency in selected peaks ----
+    print("Getting selected peak motif frequencies ...")
+    if issparse(motif_match):
+        obs_freq = motif_match[peak_set].mean(axis=0)
+        obs_freq = np.asarray(obs_freq).flatten()
+    else:
+        obs_freq = motif_match[peak_set].mean(axis=0)
+
+    # ---- Background motif frequencies ----
+    print("Getting background peak motif frequencies ...")
+    bg_idx_for_peaks = bg_peaks[peak_set]  # subset rows
+
+    # bg_freq_tab: shape [n_motifs, n_iterations]
+    bg_freq_tab = np.zeros((n_motifs, bg_idx_for_peaks.shape[1]), dtype=np.float32)
+    for j in range(bg_idx_for_peaks.shape[1]):
+        bgp = bg_idx_for_peaks[:, j]
+        if issparse(motif_match):
+            fr = motif_match[bgp].mean(axis=0)
+            bg_freq_tab[:, j] = np.asarray(fr).flatten()
+        else:
+            bg_freq_tab[:, j] = motif_match[bgp].mean(axis=0)
+
+    print("Calculating empirical & Z-test p-values ...")
+    # background stats
+    bg_mean = bg_freq_tab.mean(axis=1)
+    bg_std = bg_freq_tab.std(axis=1, ddof=1)
+    z = (obs_freq - bg_mean) / bg_std
+    z[np.isnan(z)] = 0.0
+    z[np.isinf(z)] = 0.0
+
+    pval = scipy.stats.norm.cdf(z, 0, 1)
+    pval = np.minimum(pval, 1 - pval)
+    res = pd.DataFrame(
+        {
+            "motif_obs_freq": obs_freq,
+            "zscore": z,
+            "pval": pval,
+        },
+        index=motif_names,
+    )
+
+    # sort: p-val then observed freq
+    res = res.sort_values(by=["pval", "motif_obs_freq"], ascending=[True, False])
 
     return res
