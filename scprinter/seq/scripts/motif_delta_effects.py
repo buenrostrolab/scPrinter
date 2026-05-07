@@ -156,8 +156,10 @@ def main():
         genome = scp.genome.hg38
     elif genome == "mm10":
         genome = scp.genome.mm10
+    elif genome == "mm39":
+        genome = scp.genome.mm39
     else:
-        print("genome not in ['hg38', mm10'], reading as custom genome")
+        print("genome not in ['hg38', 'mm10', 'mm39'], reading as custom genome")
         try:
             genome = pickle.load(open(genome, "rb"))
         except:
