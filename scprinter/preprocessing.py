@@ -79,15 +79,25 @@ def import_data(
 
     # Import data from the fragments file.
     # shift_left and shift_right are set all to zeros now, the extra shifting now happens during the frags to insertion part.
-    data = snap.pp.import_data(
-        path,
-        file=tempname,
-        whitelist=barcode,
-        chrom_sizes=genome.chrom_sizes,
-        shift_left=0,
-        shift_right=0,
-        **kwargs,
-    )
+
+    if snap.__version__ < "2.8.0":
+        data = snap.pp.import_data(
+            path,
+            file=tempname,
+            whitelist=barcode,
+            chrom_sizes=genome.chrom_sizes,
+            shift_left=0,
+            shift_right=0,
+            **kwargs,
+        )
+    else:
+        data = snap.pp.import_fragments(
+            path,
+            file=tempname,
+            whitelist=barcode,
+            chrom_sizes=genome.chrom_sizes,
+            **kwargs,
+        )
     data.obs["frag_path"] = [path] * len(data.obs_names)
     frag_sample_name = "_._".join(tempname.split("_._")[1:])
     data.obs["frag_sample_name"] = [frag_sample_name] * len(data.obs_names)
