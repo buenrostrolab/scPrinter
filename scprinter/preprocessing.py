@@ -723,6 +723,7 @@ def create_frag_group(
             chunk_bc = (
                 chunk[3] if sample_name is None else [sample_name + "_" + xx for xx in chunk[3]]
             )
+
             boolean_mask = [xx in bcs for xx in chunk_bc]
             chunk = chunk[boolean_mask]
             if len(chunk) > 0:
@@ -753,6 +754,7 @@ def call_peak_one_group(
     genome_size=None,
 ):
     if grouping is not None:
+        print(f"create frags for group {name}")
         create_frag_group(file_path, frag_file, grouping, name, sample_names)
     macs2(
         (
@@ -825,6 +827,8 @@ def call_peaks(
         cell_grouping = [cell_grouping]
         sample_names = [sample_names]
     n_jobs = min(n_jobs, len(group_names))
+    print(f"Running peak calling with {n_jobs} jobs")
+
     if n_jobs > 1:
         pool = ProcessPoolExecutor(max_workers=n_jobs)
 

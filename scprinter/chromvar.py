@@ -74,8 +74,18 @@ def sample_bg_peaks(
             get_peak_CpG_density(adata, genome)
 
     assert method in ["nndescent", "chromvar"], "Method not supported"
-    reads_per_peak = np.array(adata.X.sum(axis=0)).flatten()
+
     if "reads_per_peak" in bg_columns:
+        if hasattr(adata.X, "compute"):
+            reads_per_peak = 0
+            for b in range(len(adata.X.chunks[0])):
+                block = adata.X.blocks[b, 0].compute()
+                reads_per_peak += block.sum(axis=0)
+
+            reads_per_peak = np.array(reads_per_peak).reshape((-1))
+        else:
+            reads_per_peak = np.array(adata.X.sum(axis=0)).flatten()
+
         assert np.min(reads_per_peak) > 0, "Some peaks have no reads"
         reads_per_peak = np.log10(reads_per_peak)
         reads_per_peak = np.array(reads_per_peak).reshape((-1))

@@ -12,7 +12,7 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0"  # Default when running directly from source without install
 
-from . import chromvar, datasets, dorc, genome, motifs, peak
+from . import chromvar, datasets, dorc, genome, methyl_chromvar, motifs, peak
 from . import plotting as pl
 from . import preprocessing as pp
 from . import seq

@@ -121,13 +121,13 @@ def fast_gene_peak_corr(
     atac_ranges["atac_peak_name"] = atac_adata.var_names
     tss_df["gene_name"] = tss_df.index
 
+    gene_name2id = {gene: i for i, gene in enumerate(gene_list)}
     tss_df = tss_df.loc[gene_list].reset_index(drop=True)
     atac_ranges["atac_peak_id"] = np.arange(atac_ranges.shape[0]).astype("int")
-
     tss_df.iloc[:, 1] = tss_df.iloc[:, 1] - window_pad_size
     tss_df.iloc[:, 2] = tss_df.iloc[:, 2] + window_pad_size
     tss_df.columns = ["chrom", "start", "end"] + list(tss_df.columns[3:])
-    tss_df["gene_id"] = np.arange(tss_df.shape[0])
+    tss_df["gene_id"] = [gene_name2id[gene] for gene in tss_df["gene_name"]]
 
     # Find overlaps between peaks and TSS regions
     overlaps = bioframe.overlap(tss_df, atac_ranges)
@@ -158,17 +158,15 @@ def fast_gene_peak_corr(
     )
 
     # Observed feature calculation
-    ob_genes = overlaps["gene_name"]
-    ob_peaks = overlaps["atac_peak_name_"]
 
     ob_genes_id = overlaps["gene_id"]
     ob_peaks_id = overlaps["atac_peak_id_"]
 
     ob_features = np.stack(
         [
-            np.array(atac_adata.var.loc[ob_peaks]["gc_content"]),
-            np.array(atac_adata.var.loc[ob_peaks]["coverage"]),
-            np.array(rna_adata.var.loc[ob_genes]["coverage"]),
+            np.array(atac_adata.var.iloc[ob_peaks_id]["gc_content"]),
+            np.array(atac_adata.var.iloc[ob_peaks_id]["coverage"]),
+            np.array(rna_adata.var.iloc[ob_genes_id]["coverage"]),
         ],
         axis=1,
     )
@@ -200,7 +198,7 @@ def fast_gene_peak_corr(
 
     chunk_size = 1000
     pvals = []
-    for i in trange(0, len(ob_genes), chunk_size, desc="Calculating p-values"):
+    for i in trange(0, len(ob_genes_id), chunk_size, desc="Calculating p-values"):
         obs_corr = correlations_obs[i : i + chunk_size]
         bg_corrs = correlations_bg[bg_indices[i : i + chunk_size]]
         mean_bg = np.mean(bg_corrs, axis=1)
@@ -211,10 +209,14 @@ def fast_gene_peak_corr(
     pvals = np.concatenate(pvals)
 
     # Prepare results
+    ob_genes = overlaps["gene_name"]
+    ob_peaks = overlaps["atac_peak_name_"]
+
     results = pd.DataFrame(
         {"Gene": ob_genes, "PeakRanges": ob_peaks, "rObs": correlations_obs, "pvalZ": pvals}
     )
-
+    # for each gene - peak combination, keep with the highest correlation (due to multiple transcripts)
+    results = results.loc[results.groupby(["Gene", "PeakRanges"])["rObs"].idxmax()]
     if not multimapping:
         results = results.loc[results.groupby("PeakRanges")["rObs"].idxmax()]
     if pval_cut:

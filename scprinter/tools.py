@@ -1082,6 +1082,7 @@ def export_footprint_bed3(
     bar = None
 
     threadpool = {n: ThreadPoolExecutor(max_workers=1) for n in group_names}
+    write_p_list = []
 
     def write_footprint(f, footprint_data, chrom, start, region_select_start, region_select_end):
         strs = []
@@ -1122,15 +1123,23 @@ def export_footprint_bed3(
             for i, group_name in enumerate(group_names):
                 footprint_data = multimode_footprint[i]
                 f = filehandle_dict[group_name]
-                threadpool[group_name].submit(
-                    write_footprint,
-                    f,
-                    footprint_data,
-                    chrom,
-                    start,
-                    region_select_start,
-                    region_select_end,
+                write_p_list.append(
+                    threadpool[group_name].submit(
+                        write_footprint,
+                        f,
+                        footprint_data,
+                        chrom,
+                        start,
+                        region_select_start,
+                        region_select_end,
+                    )
                 )
+
+        # make sure all threads are done
+        for p in write_p_list:
+            p.result()
+        write_p_list = []
+
         del multimode_footprints, regionIDs
         bar.refresh()
         gc.collect()
@@ -1359,6 +1368,7 @@ def footprint_generator(
                     # break the loop and submit more jobs
                     if len(p_list) <= (buffer_size / 2) and not final_collect:
                         break
+
         if verbose:
             bar1.close()
             bar2.close()
@@ -1573,7 +1583,9 @@ def seq_model_config(
         before, after = "", ""
     for name, grouping in zip(group_names, cell_grouping):
         if name in printer.insertion_file.uns["group_bigwig"]:
-            if not overwrite_bigwig:
+            if (not overwrite_bigwig) & (
+                os.path.exists(printer.insertion_file.uns["group_bigwig"][name])
+            ):
                 print("bigwig for %s already exists, skip" % name)
                 continue
         export_bigwigs(printer, grouping, name)

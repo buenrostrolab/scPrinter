@@ -42,6 +42,7 @@ seq2print_attr = "scprinter.seq.scripts.evaluation_model:entrance"
 seq2print_tfbs = "scprinter.seq.scripts.generate_TFBS_bigwig:main"
 seq2print_delta = "scprinter.seq.scripts.motif_delta_effects:main"
 seq2print_modisco = "scprinter.seq.scripts.modisco_custom:main"
+methyl_chromvar_entrance = "scprinter.methyl_chromvar_entrance:main"
 
 [tool.black]
 line-length = 100

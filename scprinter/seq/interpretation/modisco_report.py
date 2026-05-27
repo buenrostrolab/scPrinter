@@ -97,8 +97,8 @@ def generate_tomtom_dataframe(
     return pandas.DataFrame(tomtom_results)
 
 
-def path_to_image_html(path):
-    return '<img src="' + path + '" width="240" >'
+def path_to_image_html(path, width=240):
+    return '<img src="' + path + f'" width="{width}" >'
 
 
 class NoFussLogo(logomaker.Logo):
@@ -544,46 +544,192 @@ def report_motifs(
     return patterns_df
 
 
-def modisco_df_to_pdf(patterns_df, output_dir, summary_file_name):
-    patterns_df.to_html(
-        open(os.path.join(output_dir, f"{summary_file_name}.html"), "w"),
-        escape=False,
-        formatters=dict(
-            modisco_cwm_fwd=path_to_image_html,
-            modisco_cwm_rev=path_to_image_html,
-            delta_effects=path_to_image_html,
-            match0_logo=path_to_image_html,
-            match1_logo=path_to_image_html,
-            match2_logo=path_to_image_html,
-        ),
-        index=False,
-    )
+# def modisco_df_to_pdf(patterns_df, output_dir, summary_file_name,
+#                       additional_image_col=[]):
+#     formatter = dict(
+#             modisco_cwm_fwd=path_to_image_html,
+#             modisco_cwm_rev=path_to_image_html,
+#             delta_effects=path_to_image_html,
+#             match0_logo=path_to_image_html,
+#             match1_logo=path_to_image_html,
+#             match2_logo=path_to_image_html,
+#         )
+#     for col in additional_image_col:
+#         if type(col) is str:
+#             formatter[col] = path_to_image_html
+#         elif type(col) is tuple:
+#             formatter[col[0]] = partial(path_to_image_html, width=col[1])
+#
+#     patterns_df.to_html(
+#         open(os.path.join(output_dir, f"{summary_file_name}.html"), "w"),
+#         escape=False,
+#         formatters=formatter,
+#         index=False,
+#     )
+#     from weasyprint import CSS, HTML
+#
+#     additional_css = """
+#     	@page {
+#     			size: 3200mm 1300mm;
+#     			margin: 0in 0in 0in 0in;
+#       }
+#     	@media print {
+#         /* Set font size for print. You can remove this if not needed. */
+#         table {
+#             font-size: 36pt;
+#             /* Center the table itself within the page. */
+#             margin-left: auto;
+#             margin-right: auto;
+#         }
+#         /* Center-align text and images in each cell. */
+#         th, td {
+#             text-align: center;
+#             vertical-align: middle;
+#         }
+#         }
+#     """
+#     css = CSS(string=additional_css)
+#     HTML(os.path.join(output_dir, f"{summary_file_name}.html")).write_pdf(
+#         os.path.join(output_dir, f"{summary_file_name}.pdf"), stylesheets=[css]
+#     )
+
+
+def modisco_df_to_pdf(
+    patterns_df: pd.DataFrame,
+    output_dir: str,
+    summary_file_name: str,
+    additional_image_col=None,  # e.g. ["modisco_cwm_fwd", ("delta_effects","90mm"), ("match0_logo", 75)]
+    page_size="3200mm 1300mm",
+    base_font_pt=36,
+    table_class="patterns-table",
+    auto_resize=True,  # NEW: True = auto mode; False = fixed (uses provided widths)
+):
+    """
+    Export a DataFrame of motif results to HTML/PDF with image columns.
+    - Image columns are rendered as <img src="..."> (no HTML width attribute).
+    - auto_resize=True -> columns auto-size; images fit cell (max-width:100%; height:auto).
+    - auto_resize=False -> per-column widths from additional_image_col are enforced via CSS nth-child.
+    """
     from weasyprint import CSS, HTML
 
-    additional_css = """
-    	@page {
-    			size: 3200mm 1300mm;
-    			margin: 0in 0in 0in 0in;
-      }
-    	@media print {
-        /* Set font size for print. You can remove this if not needed. */
-        table {
-            font-size: 36pt;
-            /* Center the table itself within the page. */
-            margin-left: auto;
-            margin-right: auto;
-        }
-        /* Center-align text and images in each cell. */
-        th, td {
-            text-align: center;
-            vertical-align: middle;
-        }
-        }
-    	"""
-    css = CSS(string=additional_css)
-    HTML(os.path.join(output_dir, f"{summary_file_name}.html")).write_pdf(
-        os.path.join(output_dir, f"{summary_file_name}.pdf"), stylesheets=[css]
+    if additional_image_col is None:
+        additional_image_col = []
+
+    # ---- image formatter (CSS controls sizing; keep HTML clean) ----
+    def _img(path):
+        return f'<img src="{path}" alt="">' if isinstance(path, str) else ""
+
+    default_img_cols = [
+        "modisco_cwm_fwd",
+        "modisco_cwm_rev",
+        "delta_effects",
+        "match0_logo",
+        "match1_logo",
+        "match2_logo",
+    ]
+
+    # Build formatter dict for columns that exist
+    formatter = {}
+    img_cols = set()
+    for c in default_img_cols:
+        if c in patterns_df.columns:
+            formatter[c] = _img
+            img_cols.add(c)
+
+    # Parse user-provided additional image columns and (optionally) widths
+    width_specs = {}  # colname -> css width string (only used in fixed mode)
+    for item in additional_image_col:
+        if isinstance(item, tuple):
+            col, w = item
+            if col in patterns_df.columns:
+                formatter[col] = _img
+                img_cols.add(col)
+                width_specs[col] = _as_css_width(w)
+        else:
+            col = item
+            if col in patterns_df.columns:
+                formatter[col] = _img
+                img_cols.add(col)
+
+    for col in patterns_df.select_dtypes(include=[np.number]).columns:
+        formatter[col] = "{:.3f}".format
+
+    # ---- write HTML  ----
+    os.makedirs(output_dir, exist_ok=True)
+    html_path = os.path.join(output_dir, f"{summary_file_name}.html")
+    pdf_path = os.path.join(output_dir, f"{summary_file_name}.pdf")
+
+    patterns_df.to_html(
+        buf=html_path,
+        escape=False,
+        formatters=formatter,
+        index=False,
+        classes=[table_class],
+        border=0,
     )
+
+    # ---- CSS ----
+    # Common CSS (both modes)
+    base_css = f"""
+    @page {{
+        size: {page_size};
+        margin: 0;
+    }}
+    html, body {{ margin: 0; padding: 0; }}
+
+    table.{table_class} {{
+        width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+        font-size: {base_font_pt}pt;
+        border-collapse: collapse;
+        {"table-layout: fixed;" if not auto_resize else ""}
+    }}
+    table.{table_class} th, table.{table_class} td {{
+        text-align: center;
+        vertical-align: middle;
+        padding: 6mm;
+        border: 0.2mm solid #ddd;
+        page-break-inside: avoid;
+        overflow: hidden;
+    }}
+    thead {{ display: table-header-group; }}
+    tfoot {{ display: table-footer-group; }}
+
+    /* Images: let them scale to their cell unless fixed-mode overrides them */
+    table.{table_class} img {{
+        display: block;
+        margin: 0 auto;
+        max-width: 300%;
+        height: auto;
+        object-fit: contain;
+    }}
+    """
+
+    col_rules = []
+    if not auto_resize and width_specs:
+        # In fixed mode, set column widths on th/td.
+        for col, width in width_specs.items():
+            idx = patterns_df.columns.get_loc(col) + 1  # nth-child is 1-based
+            col_rules.append(
+                f"table.{table_class} th:nth-child({idx}), "
+                f"table.{table_class} td:nth-child({idx}) {{ width: {width}; }}"
+            )
+        # We keep images auto-fitting inside those fixed-width cells (no hard img width)
+
+    css = CSS(string=base_css + "\n".join(col_rules))
+
+    # ---- render PDF (base_url ensures relative image src resolves) ----
+    HTML(filename=html_path, base_url=output_dir).write_pdf(pdf_path, stylesheets=[css])
+
+    return html_path, pdf_path
+
+
+def _as_css_width(w):
+    """Normalize width to a CSS string. Int/float -> 'Nmm', strings passed through."""
+    if isinstance(w, (int, float)):
+        return f"{w}mm"
+    return str(w)
 
 
 def report_composite_motif(
