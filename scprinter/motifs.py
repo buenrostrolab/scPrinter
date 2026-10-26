@@ -630,10 +630,38 @@ class Motifs:
         split_tf: bool = True,
         mode: Literal["motifmatchr", "moods"] = "motifmatchr",
         motif_name_func=None,
+        motif_name_make_unique: bool = True,
     ):
         self.n_jobs = n_jobs
         self.mode = mode
         self.all_motifs = parse_jaspar(ref_path_motif)  # now it's a list of PFM objects
+
+        if motif_name_func is not None:
+            for m in self.all_motifs:
+                m.name = motif_name_func(m.name)
+
+        if motif_name_make_unique:
+            reserved = {m.name for m in self.all_motifs}
+            seen = set()
+            counters = {}
+
+            for m in self.all_motifs:
+                base = m.name
+
+                if base in seen:
+                    counter = counters.get(base, 1)
+                    candidate = f"{base}-{counter}"
+
+                    while candidate in reserved:
+                        counter += 1
+                        candidate = f"{base}-{counter}"
+
+                    m.name = candidate
+                    reserved.add(candidate)
+                    counters[base] = counter + 1
+
+                seen.add(base)
+
         self.names = [
             set(motif.name.split(",")) if split_tf else {motif.name} for motif in self.all_motifs
         ]  # split the TFs by comma (for cistarget motif collection)
@@ -644,9 +672,7 @@ class Motifs:
             if motif_name_func is not None
             else self.names
         )
-        if motif_name_func is not None:
-            for m in self.all_motifs:
-                m.name = motif_name_func(m.name)
+
         # a non-duplicated set of motif names by TF
 
         self.tfs = set().union(*self.names)
